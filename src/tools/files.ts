@@ -56,8 +56,7 @@ export const readFile = async (
     if (numbered.length > 2000) {
       return (
         `${numbered.slice(0, 2000).join('\n') 
-                }\n... (truncated, ${lines.length - 2000} more lines. Use offset/limit to read more)`;
-      );
+                }\n... (truncated, ${lines.length - 2000} more lines. Use offset/limit to read more)`);
     }
 
     return numbered.join('\n');
