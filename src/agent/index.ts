@@ -1,77 +1,195 @@
-import { ChatCompletionMessageParam } from "openai/resources";
-import { getClient } from "../client.js";
-import { getConfig } from "../config.js";
-import { TOOLS, handleToolCall } from "./tools.js";
+import { ChatCompletionMessageParam, ChatCompletionChunk } from 'openai/resources';
+import { getClient } from '../client.js';
+import { getConfig } from '../config.js';
+import { TOOLS, handleToolCall } from './tools.js';
+import { ContextManager, getContextManager, estimateConversationTokens } from '../context/index.js';
 
 export type AgentEvent =
-    | { type: 'text', content: string }
-    | { type: 'tool_call', name: string, args: any }
-    | { type: 'tool_result', result: string }
-    | { type: 'error', message: string };
+  | { type: 'text_delta'; content: string } // Streaming text chunk
+  | { type: 'text_done'; content: string } // Full text when complete
+  | { type: 'tool_call_start'; name: string } // Tool call beginning
+  | { type: 'tool_call'; name: string; args: any }
+  | { type: 'tool_result'; name: string; result: string }
+  | { type: 'error'; message: string }
+  | { type: 'turn_done' } // Agent turn complete
+  | { type: 'context_compressed'; before: number; after: number }; // Context was compressed
+
+interface ToolCallAccumulator {
+  id: string;
+  name: string;
+  arguments: string;
+}
 
 export class Agent {
-    private history: ChatCompletionMessageParam[] = [];
-    private systemPrompt: string = "You are a helpful AI coding assistant. You are running in a CLI environment. You have access to the file system and can run commands. When asked to create or edit code, always try to read the relevant files first. Use `run_command` only when necessary and safe.";
+  private history: ChatCompletionMessageParam[] = [];
 
-    constructor() {
-        this.history.push({ role: "system", content: this.systemPrompt });
+  private contextManager: ContextManager;
+
+  private systemPrompt: string = `You are Cadre, a helpful AI coding assistant running in a CLI environment.
+
+You have access to the file system and can run commands. Your capabilities include:
+- Reading and writing files
+- Running shell commands
+- Searching code with glob patterns and grep
+- Making surgical edits to files
+
+Guidelines:
+- Always read files before modifying them
+- Use run_command only when necessary and be cautious with destructive commands
+- Prefer edit_file for small changes over write_file for entire file rewrites
+- When searching code, use glob for file patterns and grep for content search
+- Be concise in your responses`;
+
+  constructor() {
+    this.history.push({ role: 'system', content: this.systemPrompt });
+    this.contextManager = getContextManager();
+  }
+
+  async *chat(userInput: string): AsyncGenerator<AgentEvent> {
+    this.history.push({ role: 'user', content: userInput });
+
+    // Check if context needs compression before making API call
+    if (this.contextManager.needsCompression(this.history)) {
+      const beforeTokens = estimateConversationTokens(this.history);
+      this.history = await this.contextManager.compressContext(this.history);
+      const afterTokens = estimateConversationTokens(this.history);
+      yield { type: 'context_compressed', before: beforeTokens, after: afterTokens };
     }
 
-    async *chat(userInput: string): AsyncGenerator<AgentEvent> {
-        this.history.push({ role: "user", content: userInput });
+    const client = getClient();
+    const config = getConfig();
 
-        const client = getClient();
-        const config = getConfig();
+    try {
+      while (true) {
+        // Use streaming API
+        const stream = await client.chat.completions.create({
+          model: config.modelName,
+          messages: this.history,
+          tools: TOOLS,
+          tool_choice: 'auto',
+          stream: true,
+        });
 
-        try {
-            while (true) {
-                const response = await client.chat.completions.create({
-                    model: config.modelName,
-                    messages: this.history,
-                    tools: TOOLS,
-                    tool_choice: "auto",
-                });
+        let textContent = '';
+        const toolCalls: ToolCallAccumulator[] = [];
+        let currentToolCallIndex = -1;
 
-                const message = response.choices[0].message;
-                this.history.push(message);
+        // Process stream chunks
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta;
+          const finishReason = chunk.choices[0]?.finish_reason;
 
-                if (message.content) {
-                    yield { type: 'text', content: message.content };
+          // Handle text content streaming
+          if (delta?.content) {
+            textContent += delta.content;
+            yield { type: 'text_delta', content: delta.content };
+          }
+
+          // Handle tool calls being built up
+          if (delta?.tool_calls) {
+            for (const toolCallDelta of delta.tool_calls) {
+              const { index } = toolCallDelta;
+
+              // New tool call starting
+              if (toolCallDelta.id) {
+                currentToolCallIndex = index;
+                toolCalls[index] = {
+                  id: toolCallDelta.id,
+                  name: toolCallDelta.function?.name || '',
+                  arguments: toolCallDelta.function?.arguments || '',
+                };
+                if (toolCallDelta.function?.name) {
+                  yield { type: 'tool_call_start', name: toolCallDelta.function.name };
                 }
-
-                if (message.tool_calls && message.tool_calls.length > 0) {
-                    for (const toolCall of message.tool_calls) {
-                        if (toolCall.type !== 'function') continue;
-                        const args = JSON.parse(toolCall.function.arguments);
-                        yield { type: 'tool_call', name: toolCall.function.name, args };
-
-                        // TODO: Add User Confirmation Hook here for sensitive tools?
-                        // For now we assume the UI handles confirmation before calling `chat` again? 
-                        // No, the agent loop executes tools. We need a way to delegate confirmation to UI.
-                        // I will pause here? No, let's auto-run for now and add confirmation logic in the UI layer interception if possible, 
-                        // or just rely on the tool wrapper.
-
-                        const result = await handleToolCall(toolCall.function.name, args);
-                        yield { type: 'tool_result', result };
-
-                        this.history.push({
-                            role: "tool",
-                            tool_call_id: toolCall.id,
-                            content: result
-                        });
-                    }
-                    // Loop back to send tool results to LLM
-                } else {
-                    // No tool calls, we are done with this turn
-                    break;
+              } else if (toolCalls[index]) {
+                // Accumulating function name or arguments
+                if (toolCallDelta.function?.name) {
+                  toolCalls[index].name += toolCallDelta.function.name;
                 }
+                if (toolCallDelta.function?.arguments) {
+                  toolCalls[index].arguments += toolCallDelta.function.arguments;
+                }
+              }
             }
-        } catch (error: any) {
-            yield { type: 'error', message: error.message };
+          }
         }
-    }
 
-    clearHistory() {
-        this.history = [{ role: "system", content: this.systemPrompt }];
+        // Add assistant message to history
+        if (textContent || toolCalls.length > 0) {
+          const assistantMessage: ChatCompletionMessageParam = {
+            role: 'assistant',
+            content: textContent || null,
+          };
+
+          if (toolCalls.length > 0) {
+            (assistantMessage as any).tool_calls = toolCalls.map((tc) => ({
+              id: tc.id,
+              type: 'function' as const,
+              function: {
+                name: tc.name,
+                arguments: tc.arguments,
+              },
+            }));
+          }
+
+          this.history.push(assistantMessage);
+        }
+
+        // Yield complete text if any
+        if (textContent) {
+          yield { type: 'text_done', content: textContent };
+        }
+
+        // Execute tool calls if any
+        if (toolCalls.length > 0) {
+          for (const toolCall of toolCalls) {
+            let args: any = {};
+            try {
+              args = JSON.parse(toolCall.arguments);
+            } catch {
+              args = {};
+            }
+
+            yield { type: 'tool_call', name: toolCall.name, args };
+
+            const result = await handleToolCall(toolCall.name, args);
+
+            // Truncate large tool results to save context
+            const truncatedResult = this.contextManager.truncateToolResult(result);
+            yield { type: 'tool_result', name: toolCall.name, result: truncatedResult };
+
+            this.history.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: truncatedResult,
+            });
+          }
+          // Loop back to send tool results to LLM
+        } else {
+          // No tool calls, we are done with this turn
+          yield { type: 'turn_done' };
+          break;
+        }
+      }
+    } catch (error: any) {
+      yield { type: 'error', message: error.message };
     }
+  }
+
+  clearHistory() {
+    this.history = [{ role: 'system', content: this.systemPrompt }];
+    this.contextManager.clearSummary();
+  }
+
+  getHistory(): ChatCompletionMessageParam[] {
+    return [...this.history];
+  }
+
+  getTokenEstimate(): number {
+    return estimateConversationTokens(this.history);
+  }
+
+  getContextStats() {
+    return this.contextManager.getStats(this.history);
+  }
 }

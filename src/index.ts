@@ -1,38 +1,127 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { startInteractiveSession } from './ui/interactive.js';
-import { clearConfig, setConfig } from './config.js';
+import chalk from 'chalk';
+import { startInteractiveSession, runSinglePrompt } from './ui/interactive.js';
+import { clearConfig, setConfig, getConfig, isConfigValid } from './config.js';
+import { getPermissionManager, listPermissions, clearAllPermissions } from './permissions/index.js';
 
 const program = new Command();
 
 program
-    .name('cadre')
-    .description('On-prem AI Coding Assistant CLI')
-    .version('1.0.0');
+  .name('cadre')
+  .description('Cadre - AI Coding Assistant CLI')
+  .version('1.0.0')
+  .argument('[prompt]', 'Optional prompt to run (starts interactive mode if not provided)')
+  .option('-p, --print', 'Print response and exit (one-shot mode, no follow-up)')
+  .option('-c, --continue', 'Continue in interactive mode after initial prompt')
+  .option('--model <model>', 'Override model name for this session')
+  .action(async (prompt, options) => {
+    // Check configuration
+    const configStatus = isConfigValid();
+    if (!configStatus.valid) {
+      console.log(chalk.yellow(`⚠ Missing configuration: ${configStatus.missing.join(', ')}`));
+      console.log(chalk.dim('Set via .env file or: cadre config --key <your-api-key>'));
+      console.log('');
+    }
 
-program.command('start')
-    .description('Start the interactive session')
-    .action(() => {
-        startInteractiveSession();
-    });
+    // Override model if specified
+    if (options.model) {
+      process.env.MODEL_NAME = options.model;
+    }
 
-program.command('config')
-    .description('Set configuration')
-    .option('--url <url>', 'Set OpenAI Base URL')
-    .option('--model <model>', 'Set Model Name')
-    .option('--key <key>', 'Set API Key')
-    .action((options) => {
-        if (options.url) setConfig('openaiBaseUrl', options.url);
-        if (options.model) setConfig('modelName', options.model);
-        if (options.key) setConfig('openaiApiKey', options.key);
-        console.log('Configuration updated.');
-    });
+    if (prompt) {
+      // Run with provided prompt
+      if (options.print) {
+        // One-shot mode: run prompt and exit
+        await runSinglePrompt(prompt);
+      } else if (options.continue) {
+        // Run prompt then continue interactively
+        await startInteractiveSession(prompt);
+      } else {
+        // Default: run prompt then continue interactively
+        await startInteractiveSession(prompt);
+      }
+    } else {
+      // No prompt provided, start interactive mode
+      await startInteractiveSession();
+    }
+  });
 
-program.command('reset')
-    .description('Reset configuration')
-    .action(() => {
-        clearConfig();
-        console.log('Configuration reset.');
-    });
+// Config command
+program
+  .command('config')
+  .description('Configure Cadre settings')
+  .option('--url <url>', 'Set OpenAI-compatible API base URL')
+  .option('--model <model>', 'Set default model name')
+  .option('--key <key>', 'Set API key')
+  .option('--show', 'Show current configuration')
+  .action((options) => {
+    if (options.show || (!options.url && !options.model && !options.key)) {
+      const config = getConfig();
+      console.log(chalk.bold('\nCadre Configuration:'));
+      console.log(chalk.dim(`  Model:    ${config.modelName}`));
+      console.log(chalk.dim(`  Endpoint: ${config.openaiBaseUrl}`));
+      console.log(
+        chalk.dim(
+          `  API Key:  ${config.openaiApiKey ? `****${config.openaiApiKey.slice(-4)}` : 'Not set'}`,
+        ),
+      );
+      console.log(chalk.dim(`  Context:  ${config.maxContextTokens} tokens`));
+      console.log('');
+      return;
+    }
 
+    if (options.url) setConfig('openaiBaseUrl', options.url);
+    if (options.model) setConfig('modelName', options.model);
+    if (options.key) setConfig('openaiApiKey', options.key);
+    console.log(chalk.green('Configuration updated.'));
+  });
+
+// Reset command
+program
+  .command('reset')
+  .description('Reset all configuration to defaults')
+  .action(() => {
+    clearConfig();
+    console.log(chalk.green('Configuration reset to defaults.'));
+  });
+
+// Permissions command
+program
+  .command('permissions')
+  .description('Manage tool permissions')
+  .argument('[action]', 'Action: list, clear')
+  .argument('[path]', 'Project path (for revoke)')
+  .action(async (action, projectPath) => {
+    if (!action || action === 'list') {
+      const permissions = await listPermissions();
+      const entries = Object.entries(permissions);
+
+      if (entries.length === 0) {
+        console.log(chalk.dim('No permissions granted yet.'));
+        return;
+      }
+
+      console.log(chalk.bold('\nGranted Permissions:'));
+      for (const [path, perms] of entries) {
+        console.log(chalk.blue(`\n  ${path}`));
+        if (perms.bash) console.log(chalk.dim('    ✓ bash (run commands)'));
+        if (perms.write) console.log(chalk.dim('    ✓ write (write files)'));
+        if (perms.edit) console.log(chalk.dim('    ✓ edit (edit files)'));
+        console.log(chalk.dim(`    Granted: ${perms.granted_at}`));
+      }
+      console.log('');
+    } else if (action === 'clear' || action === 'reset') {
+      await clearAllPermissions();
+      console.log(chalk.green('All permissions cleared.'));
+    } else if (action === 'revoke' && projectPath) {
+      const manager = getPermissionManager();
+      await manager.revoke(projectPath);
+      console.log(chalk.green(`Permissions revoked for: ${projectPath}`));
+    } else {
+      console.log(chalk.yellow('Usage: cadre permissions [list|clear|revoke <path>]'));
+    }
+  });
+
+// Parse and run
 program.parse();
