@@ -1,31 +1,75 @@
 import Conf from 'conf';
+import { config as dotenvConfig } from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+
+// Load .env files in order of precedence (later files override earlier)
+// 1. .env in home directory (~/.cadre/.env)
+// 2. .env in current working directory
+const homeEnvPath = path.join(process.env.HOME || '', '.cadre', '.env');
+const cwdEnvPath = path.join(process.cwd(), '.env');
+
+if (fs.existsSync(homeEnvPath)) {
+  dotenvConfig({ path: homeEnvPath });
+}
+if (fs.existsSync(cwdEnvPath)) {
+  dotenvConfig({ path: cwdEnvPath, override: true });
+}
 
 export interface ConfigSchema {
-    openaiApiKey?: string;
-    openaiBaseUrl?: string;
-    modelName: string;
+  openaiApiKey?: string;
+  openaiBaseUrl?: string;
+  modelName: string;
+  maxContextTokens?: number;
+  maxOutputTokens?: number;
 }
 
 const config = new Conf<ConfigSchema>({
-    projectName: 'cadre',
-    defaults: {
-        modelName: 'gpt-3.5-turbo', // Default backup
-        openaiBaseUrl: 'http://localhost:8000/v1' // Default vLLM
-    }
+  projectName: 'cadre',
+  defaults: {
+    modelName: 'gpt-4o',
+    openaiBaseUrl: 'https://api.openai.com/v1',
+  },
 });
 
+/**
+ * Get configuration with priority:
+ * 1. Environment variables (from .env or shell)
+ * 2. Stored config (from conf)
+ * 3. Defaults
+ */
 export const getConfig = (): ConfigSchema => {
-    return {
-        openaiApiKey: config.get('openaiApiKey'),
-        openaiBaseUrl: config.get('openaiBaseUrl'),
-        modelName: config.get('modelName')
-    };
+  return {
+    openaiApiKey: process.env.OPENAI_API_KEY || process.env.API_KEY || config.get('openaiApiKey'),
+    openaiBaseUrl:
+      process.env.OPENAI_BASE_URL || process.env.API_BASE_URL || config.get('openaiBaseUrl'),
+    modelName: process.env.MODEL_NAME || process.env.OPENAI_MODEL || config.get('modelName'),
+    maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || '') || 128000,
+    maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS || '') || 16000,
+  };
 };
 
 export const setConfig = (key: keyof ConfigSchema, value: string) => {
-    config.set(key, value);
+  config.set(key, value);
 };
 
 export const clearConfig = () => {
-    config.clear();
+  config.clear();
+};
+
+/**
+ * Check if configuration is valid for making API calls.
+ */
+export const isConfigValid = (): { valid: boolean; missing: string[] } => {
+  const cfg = getConfig();
+  const missing: string[] = [];
+
+  if (!cfg.openaiApiKey) {
+    missing.push('API_KEY or OPENAI_API_KEY');
+  }
+
+  return {
+    valid: missing.length === 0,
+    missing,
+  };
 };
