@@ -1,8 +1,13 @@
 {
   "name": "cadre",
   "version": "1.0.0",
-  "description": "",
+  "description": "A powerful agentic CLI tool for local development with vLLM and OpenAI-compatible APIs.",
   "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "main": "index.js",
   "bin": {
     "cadre": "./dist/index.js"
@@ -13,10 +18,20 @@
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm run lint"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "cli",
+    "agent",
+    "ai",
+    "vllm",
+    "openai",
+    "automation",
+    "developer-tools"
+  ],
+  "author": "Yoav Elkayam",
   "license": "ISC",
   "dependencies": {
     "chalk": "^5.6.2",
@@ -44,6 +59,7 @@
     "eslint-plugin-prettier": "^5.5.4",
     "prettier": "^3.7.4",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^1.2.0"
   }
 }
