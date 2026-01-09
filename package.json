@@ -44,13 +44,21 @@
     "openai": "^6.15.0",
     "ora": "^8.2.0"
   },
+  "overrides": {
+    "rollup": "4.54.0",
+    "@rollup/rollup-darwin-arm64": "4.54.0",
+    "ufo": "1.6.1",
+    "iconv-lite": "0.6.3",
+    "ts-api-utils": "2.1.0",
+    "prettier-linter-helpers": "1.0.0"
+  },
   "devDependencies": {
     "@types/inquirer": "^9.0.9",
     "@types/marked": "^5.0.2",
     "@types/marked-terminal": "^6.1.1",
     "@types/node": "^25.0.3",
-    "@typescript-eslint/eslint-plugin": "^8.52.0",
-    "@typescript-eslint/parser": "^8.52.0",
+    "@typescript-eslint/eslint-plugin": "8.50.1",
+    "@typescript-eslint/parser": "8.50.1",
     "eslint": "^8.57.1",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^10.1.8",

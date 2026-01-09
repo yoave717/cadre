@@ -52,7 +52,7 @@ program
   .command('config')
   .description('Configure Cadre settings')
   .option('--url <url>', 'Set OpenAI-compatible API base URL')
-  .option('--set-model <model>', 'Set default model name')
+  .option('-m, --set-model <model>', 'Set default model name')
   .option('--key <key>', 'Set API key')
   .option('--show', 'Show current configuration')
   .action((options) => {

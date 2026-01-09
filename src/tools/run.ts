@@ -56,7 +56,7 @@ export const runCommand = async (command: string, cwd?: string): Promise<string>
   try {
     const { stdout, stderr } = await execAsync(command, {
       cwd: workDir,
-      timeout: 120000, // 2 minute timeout
+      timeout: 300000, // 5 minute timeout
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer
     });
 
@@ -146,10 +146,10 @@ export const runCommandStream = async (
       resolve(`Error spawning command: ${error.message}`);
     });
 
-    // Timeout after 2 minutes
+    // Timeout after 5 minutes
     setTimeout(() => {
       child.kill();
-      resolve(`Command timed out after 120 seconds.\n${stdout}\n${stderr}`);
-    }, 120000);
+      resolve(`Command timed out after 300 seconds.\n${stdout}\n${stderr}`);
+    }, 300000);
   });
 };
