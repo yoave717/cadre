@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { exec } from 'child_process';
 import path from 'path';
 import util from 'util';
+import fs from 'fs';
+import os from 'os';
 
 const execAsync = util.promisify(exec);
 const cliPath = path.resolve(__dirname, '../../dist/index.js');
@@ -44,5 +46,108 @@ describe('E2E CLI', () => {
       } catch (error: any) {
          throw new Error(`CLI execution failed: ${error.message}`);
       }
+  });
+
+
+  
+
+describe('Config Command', () => {
+    let tempDir: string;
+    
+    // Create a fresh temp dir for each test to ensure isolation
+    // and avoid interference from project .env or user's ~/.cadre/.env
+    beforeEach(async () => {
+        tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'cadre-e2e-'));
+    });
+
+    afterEach(async () => {
+        if (tempDir) {
+           await fs.promises.rm(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    // Helper to run CLI in the temp environment
+    const runInTemp = async (args: string) => {
+        return execAsync(`node ${cliPath} ${args}`, {
+            cwd: tempDir,
+            env: { 
+                ...process.env, 
+                HOME: tempDir, // Mask real home
+                // Unset vars that might affect config
+                OPENAI_API_KEY: '',
+                API_KEY: '',
+                MODEL_NAME: '',
+                OPENAI_BASE_URL: '' // Ensure we don't pick up anything
+            }
+        });
+    };
+
+
+    it('should set and show configuration', async () => {
+        // Set config
+        await runInTemp('config --key test-key --set-model test-model --url https://api.example.com');
+        
+        // Show config
+        const { stdout } = await runInTemp('config --show');
+        
+        expect(stdout).toContain('Model:    test-model');
+        expect(stdout).toContain('Endpoint: https://api.example.com');
+        // Key is masked in output
+        expect(stdout).toContain('API Key:  ****-key');
+    });
+
+    it('should reset configuration', async () => {
+        // Set something first
+        await runInTemp('config --key test-key');
+        
+        // Reset
+        const { stdout } = await runInTemp('reset');
+        expect(stdout).toContain('Configuration reset to defaults.');
+        
+        // Verify it's back to default/empty (default model is gpt-4o)
+        const { stdout: showOut } = await runInTemp('config --show');
+        expect(showOut).toContain('Model:    gpt-4o');
+        expect(showOut).toContain('API Key:  Not set');
+    });
+  });
+
+  describe('Permissions Command', () => {
+      it('should list permissions (empty state)', async () => {
+          // We can't easily grant permissions via CLI in non-interactive mode without running a prompt that asks for them.
+          // So we primarily test the list command returns successfully.
+          // Ensure we clear permissions first
+          await execAsync(`node ${cliPath} permissions clear`);
+          
+          const { stdout } = await execAsync(`node ${cliPath} permissions list`);
+          expect(stdout).toContain('No permissions granted yet');
+      });
+  });
+
+  describe('Validation', () => {
+      it('should warn on missing configuration', async () => {
+          // Use temp dir for this too to avoid picking up local .env
+          const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'cadre-e2e-val-'));
+           
+          const command = `node ${cliPath} "hello" --print`;
+          try {
+             const { stdout } = await execAsync(command, { 
+                 cwd: tempDir,
+                 env: { 
+                     ...process.env, 
+                     HOME: tempDir,
+                     OPENAI_API_KEY: '', 
+                     API_KEY: '',
+                     MODEL_NAME: ''
+                 } 
+             });
+             expect(stdout).toContain('Missing configuration: API_KEY or OPENAI_API_KEY');
+             
+          } catch (error: any) {
+             const output = error.stdout || '';
+             expect(output).toContain('Missing configuration: API_KEY or OPENAI_API_KEY');
+          } finally {
+             await fs.promises.rm(tempDir, { recursive: true, force: true });
+          }
+      });
   });
 });

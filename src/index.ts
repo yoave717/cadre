@@ -52,11 +52,11 @@ program
   .command('config')
   .description('Configure Cadre settings')
   .option('--url <url>', 'Set OpenAI-compatible API base URL')
-  .option('--model <model>', 'Set default model name')
+  .option('--set-model <model>', 'Set default model name')
   .option('--key <key>', 'Set API key')
   .option('--show', 'Show current configuration')
   .action((options) => {
-    if (options.show || (!options.url && !options.model && !options.key)) {
+    if (options.show || (!options.url && !options.setModel && !options.key)) {
       const config = getConfig();
       console.log(chalk.bold('\nCadre Configuration:'));
       console.log(chalk.dim(`  Model:    ${config.modelName}`));
@@ -71,8 +71,9 @@ program
       return;
     }
 
+
     if (options.url) setConfig('openaiBaseUrl', options.url);
-    if (options.model) setConfig('modelName', options.model);
+    if (options.setModel) setConfig('modelName', options.setModel);
     if (options.key) setConfig('openaiApiKey', options.key);
     console.log(chalk.green('Configuration updated.'));
   });
