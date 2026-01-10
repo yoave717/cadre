@@ -7,6 +7,7 @@ import * as grepTools from '../tools/grep.js';
 import * as indexTools from '../tools/index.js';
 import * as gitTools from '../tools/git.js';
 import * as gitflowTools from '../tools/gitflow.js';
+import * as prTools from '../tools/pr.js';
 
 export const TOOLS: ChatCompletionTool[] = [
   // File operations
@@ -599,6 +600,89 @@ export const TOOLS: ChatCompletionTool[] = [
       },
     },
   },
+
+  // Pull Request operations
+  {
+    type: 'function',
+    function: {
+      name: 'create_auto_branch',
+      description:
+        'Create an automatic branch for a new task with naming pattern: cadre/<feature-name>-<random-hash>. Similar to Claude Code branch creation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          feature_name: {
+            type: 'string',
+            description:
+              'Feature or task name (will be sanitized). Example: "add-login-feature" becomes "cadre/add-login-feature-a1b2c"',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['feature_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_pr_requirements',
+      description:
+        'Check if GitHub CLI (gh) or GitLab CLI (glab) is installed and authenticated. Shows installation/authentication instructions if needed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_pull_request',
+      description:
+        'Create a pull request (GitHub) or merge request (GitLab). IMPORTANT: Always provide a meaningful summary parameter that explains WHAT problem is being solved, HOW it was solved, and WHY this approach was chosen. The tool will automatically add technical details (commits, file changes) but needs context from you.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'PR/MR title - should be clear and descriptive',
+          },
+          summary: {
+            type: 'string',
+            description:
+              'High-level summary explaining: (1) WHAT problem/feature this addresses, (2) HOW it was implemented, and (3) WHY this approach was chosen. This provides context that commits alone cannot convey. Example: "Adds automatic branch creation to streamline Git workflows. Implemented using a consistent naming pattern to maintain organization. This approach was chosen to reduce manual branch management and integrate seamlessly with existing tools."',
+          },
+          body: {
+            type: 'string',
+            description:
+              'Complete PR/MR body (optional - if not provided, will auto-generate using summary + commits + file changes)',
+          },
+          base_branch: {
+            type: 'string',
+            description: "Base branch to merge into (optional - defaults to 'main' or 'master')",
+          },
+          draft: {
+            type: 'boolean',
+            description: 'Create as draft PR/MR (optional, default false)',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['title', 'summary'],
+      },
+    },
+  },
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -671,6 +755,27 @@ export const handleToolCall = async (name: string, args: any): Promise<string> =
       return gitflowTools.gitflowRelease(args.action, args.version, args.cwd);
     case 'gitflow_hotfix':
       return gitflowTools.gitflowHotfix(args.action, args.version, args.cwd);
+
+    // Pull Request operations
+    case 'create_auto_branch': {
+      const result = await prTools.createAutoBranch(args.feature_name, args.cwd);
+      return JSON.stringify(result, null, 2);
+    }
+    case 'check_pr_requirements': {
+      const result = await prTools.checkPrRequirements(args.cwd);
+      return JSON.stringify(result, null, 2);
+    }
+    case 'create_pull_request': {
+      const result = await prTools.createPullRequest({
+        title: args.title,
+        body: args.body,
+        summary: args.summary,
+        baseBranch: args.base_branch,
+        draft: args.draft,
+        cwd: args.cwd,
+      });
+      return JSON.stringify(result, null, 2);
+    }
 
     default:
       return `Unknown tool: ${name}`;

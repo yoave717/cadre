@@ -8,6 +8,8 @@ Cadre is a Claude Code-like AI Coding Assistant CLI that provides an intelligent
 - **Streaming Responses** - Real-time token streaming
 - **Full Tool Suite** - Read, write, edit files, run commands, glob, grep
 - **Project Indexing** - Fast symbol and file search with on-prem indexing (like Cursor IDE)
+- **Git Workflow Integration** - Automatic branch creation and PR/MR creation for GitHub & GitLab
+- **Automatic PR Descriptions** - Auto-generates PR descriptions from commits and changes
 - **Context Compression** - Automatic summarization for long conversations
 - **Permission System** - Per-project permissions with "remember" option
 - **Multi-model Support** - OpenAI, vLLM, Together, Qwen, and other OpenAI-compatible APIs
@@ -240,6 +242,155 @@ Indexes are stored per-project in `~/.cadre/indexes/` using a hash of the projec
 - Indexes persist across sessions
 - Safe for multiple projects
 - Fully on-premises (no cloud)
+
+## Git Workflow Integration
+
+Cadre seamlessly integrates with your Git workflow, automatically creating branches and pull requests/merge requests on both GitHub and GitLab.
+
+### Automatic Branch Creation
+
+When working on a new task, Cadre can automatically create feature branches with a consistent naming pattern (similar to Claude Code):
+
+```
+cadre/<feature-name>-<random-hash>
+```
+
+Example: `cadre/add-login-feature-a1b2c`
+
+The AI agent will:
+
+- Sanitize feature names (lowercase, hyphens for spaces)
+- Add a random 5-character hash for uniqueness
+- Create and checkout the new branch automatically
+
+### Pull Request / Merge Request Creation
+
+Cadre can create PRs (GitHub) or MRs (GitLab) directly from the CLI using official CLI tools:
+
+- **GitHub**: Uses `gh` CLI
+- **GitLab**: Uses `glab` CLI
+
+#### Prerequisites
+
+Install the appropriate CLI tool for your platform:
+
+**GitHub CLI (`gh`)**:
+
+```bash
+# macOS
+brew install gh
+
+# Linux (Debian/Ubuntu)
+sudo apt install gh
+
+# Windows (winget)
+winget install --id GitHub.cli
+```
+
+**GitLab CLI (`glab`)**:
+
+```bash
+# macOS
+brew install glab
+
+# Linux (Debian/Ubuntu)
+sudo apt install glab
+
+# Windows (scoop)
+scoop install glab
+```
+
+Then authenticate:
+
+```bash
+gh auth login   # For GitHub
+glab auth login # For GitLab
+```
+
+#### Automatic PR Description Generation
+
+When creating a PR/MR, Cadre generates comprehensive descriptions that include:
+
+- **High-level Summary** - Explains WHAT problem is being solved, HOW it was implemented, and WHY this approach was chosen
+- **What Changed** - Lists all commits since the branch diverged
+- **Technical Details** - File change statistics and key files modified
+- **Testing Checklist** - Pre-populated checklist items
+- **Template Integration** - Uses your project's PR/MR template if available
+
+**Key Feature:** The AI is instructed to always provide meaningful context when creating PRs, not just list commits. It must explain the rationale and approach.
+
+Example generated PR description:
+
+```markdown
+## Summary
+
+This PR adds automatic branch creation and PR/MR support to streamline Git workflows in Cadre.
+
+**What:** Implements automatic branch creation with the naming pattern `cadre/<feature>-<hash>` (similar to Claude Code) and adds PR/MR creation capabilities for both GitHub and GitLab.
+
+**How:** Uses the official `gh` and `glab` CLI tools for PR/MR creation, with automatic repository type detection and smart base branch identification. Branch names are sanitized and include a random 5-character hash for uniqueness.
+
+**Why:** This reduces manual branch management overhead and provides a consistent workflow across different Git platforms. The automated PR creation ensures developers can quickly open pull requests with comprehensive descriptions without leaving the terminal.
+
+## What Changed
+
+- feat: add automatic branch creation and PR/MR support
+- feat: implement PR description generation
+- docs: update README with Git workflow documentation
+- test: add comprehensive test coverage
+
+## Technical Details
+
+**Files changed:** 8 | **Lines added:** 750 | **Lines deleted:** 12
+
+### Key Files Modified
+
+- `src/tools/pr.ts` (+256/-0)
+- `src/tools/repo-utils.ts` (+155/-0)
+- `src/tools/cli-utils.ts` (+154/-0)
+- `src/agent/tools.ts` (+95/-12)
+
+## Testing
+
+- [ ] Tests pass locally
+- [ ] Code follows project style guidelines
+- [ ] Changes have been manually tested
+
+---
+
+_This PR was created by Cadre AI_
+```
+
+### Available Git Tools
+
+The AI agent has access to these Git workflow tools:
+
+| Tool                    | Description                                             |
+| ----------------------- | ------------------------------------------------------- |
+| `create_auto_branch`    | Create branch with pattern: `cadre/<feature>-<hash>`    |
+| `check_pr_requirements` | Check if GitHub/GitLab CLI is installed & authenticated |
+| `create_pull_request`   | Create PR/MR with auto-generated description            |
+| `git_status`            | Get repository status                                   |
+| `git_branch`            | List, create, switch, or delete branches                |
+| `git_commit`            | Create commits with conventional format                 |
+| `git_sync`              | Fetch, pull, or push changes                            |
+| `git_log`               | View commit history                                     |
+| `git_diff`              | View diffs                                              |
+
+### Example Workflow
+
+```bash
+# Start working on a feature
+cadre "Implement user authentication"
+
+# Cadre will:
+# 1. Create branch: cadre/implement-user-authentication-x7k9p
+# 2. Make the necessary changes
+# 3. Commit with descriptive messages
+# 4. Create a PR with auto-generated description
+
+# The AI handles the entire workflow automatically!
+```
 
 ## Tools
 

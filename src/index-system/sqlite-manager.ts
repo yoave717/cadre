@@ -145,7 +145,7 @@ export class SqliteIndexManager {
         INSERT INTO exports (file_id, name) VALUES (?, ?)
       `);
 
-      for (const [filePath, fileIndex] of Object.entries(index.files)) {
+      for (const fileIndex of Object.values(index.files)) {
         const fileResult = insertFile.run(
           fileIndex.metadata.path,
           fileIndex.metadata.absolutePath,
