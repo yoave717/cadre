@@ -337,11 +337,16 @@ export const startInteractiveSession = async (
       if (!trimmed) continue;
 
       // Check if this request would benefit from parallel execution
-      // Auto-enable without prompting for better performance
-      const useParallelMode = await coordinator.shouldUseMultiWorker(result.content);
+      // Skip check for simple/short requests to reduce overhead
+      let useParallelMode = false;
+      const isLikelyComplex =
+        result.content.length > 150 || (result.content.match(/,/g) || []).length >= 2;
 
-      if (useParallelMode) {
-        console.log(chalk.cyan('💡 Using multi-worker mode for parallel execution'));
+      if (isLikelyComplex) {
+        useParallelMode = await coordinator.shouldUseMultiWorker(result.content);
+        if (useParallelMode) {
+          console.log(chalk.cyan('💡 Using multi-worker mode for parallel execution'));
+        }
       }
 
       // Create a fresh abort controller for this turn

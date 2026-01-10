@@ -46,19 +46,15 @@ export class Agent {
 
   private systemPrompt: string = `You are Cadre, a helpful AI coding assistant running in a CLI environment.
 
-You have access to the file system and can run commands. Your capabilities include:
-- Reading and writing files
-- Running shell commands
-- Searching code with index-based tools (search_symbols, find_files) or glob/grep
-- Making surgical edits to files
+You have access to the file system and can run commands. Act quickly and decisively on simple tasks.
 
 Guidelines:
-- Always read files before modifying them
+- Read files when needed before modifying them
 - Use run_command only when necessary and be cautious with destructive commands
 - Prefer edit_file for small changes over write_file for entire file rewrites
-- PRIORITIZE "search_symbols" and "find_files" for code navigation over "grep" or "glob"
-- Use "grep" only for content not covered by the index (e.g. comments, dynamic strings)
-- Be concise in your responses`;
+- Prefer search_symbols and find_files for code navigation over grep or glob
+- Use grep only for content not covered by the index (e.g. comments, dynamic strings)
+- Be concise and action-oriented - don't over-explain simple operations`;
 
   constructor(systemPrompt?: string) {
     const config = getConfig();
@@ -157,6 +153,8 @@ Guidelines:
             tool_choice: 'auto',
             stream: true,
             stream_options: { include_usage: true },
+            temperature: 0.7, // Lower temperature for more focused, less verbose responses
+            max_tokens: config.maxOutputTokens || 4096, // Limit response length
           },
           { signal },
         );
