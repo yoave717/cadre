@@ -1,4 +1,5 @@
 import * as readline from 'readline';
+import { HistoryManager } from './history-manager.js';
 
 export interface LineEditorOptions {
   prompt?: string;
@@ -12,6 +13,11 @@ export class LineEditor {
   private resolve: ((value: string) => void) | null = null;
   private reject: ((reason?: unknown) => void) | null = null;
   private active: boolean = false;
+  private history: HistoryManager = new HistoryManager();
+  private searchMode: boolean = false;
+  private searchQuery: string = '';
+  private searchMatches: string[] = [];
+  private searchIndex: number = 0;
 
   constructor() {}
 
@@ -27,6 +33,11 @@ export class LineEditor {
     this.buffer = '';
     this.cursor = 0;
     this.active = true;
+    this.history.reset();
+    this.searchMode = false;
+    this.searchQuery = '';
+    this.searchMatches = [];
+    this.searchIndex = 0;
 
     return new Promise((resolve, reject) => {
       this.resolve = resolve;
@@ -84,14 +95,24 @@ export class LineEditor {
       // Enter / Return
       if (charCode === 13) {
         process.stdout.write('\n'); // New line
-        this.cleanup();
-        this.resolve?.(this.buffer);
+        if (this.searchMode) {
+          this.selectSearchResult();
+        } else {
+          this.cleanup();
+          // Add to history before resolving
+          this.history.add(this.buffer);
+          this.resolve?.(this.buffer);
+        }
         return;
       }
 
       // Backspace (127 or 8)
       if (charCode === 127 || charCode === 8) {
-        this.handleBackspace();
+        if (this.searchMode) {
+          this.handleSearchBackspace();
+        } else {
+          this.handleBackspace();
+        }
         return;
       }
 
@@ -124,9 +145,19 @@ export class LineEditor {
         return;
       }
 
+      // Ctrl+R (Reverse search)
+      if (charCode === 18) {
+        this.enterSearchMode();
+        return;
+      }
+
       // Normal characters (printable)
       if (charCode >= 32 && charCode !== 127) {
-        this.insert(input);
+        if (this.searchMode) {
+          this.updateSearch(input);
+        } else {
+          this.insert(input);
+        }
         return;
       }
     }
@@ -140,7 +171,27 @@ export class LineEditor {
   };
 
   private handleEscapeSequence(seq: string) {
+    // ESC key to exit search mode
+    if (seq === '\u001b' && this.searchMode) {
+      this.exitSearchMode();
+      return;
+    }
+
     switch (seq) {
+      case '\u001b[A': // Up Arrow
+        if (this.searchMode) {
+          this.navigateSearchUp();
+        } else {
+          this.loadPreviousHistory();
+        }
+        break;
+      case '\u001b[B': // Down Arrow
+        if (this.searchMode) {
+          this.navigateSearchDown();
+        } else {
+          this.loadNextHistory();
+        }
+        break;
       case '\u001b[D': // Left Arrow
         if (this.cursor > 0) {
           this.cursor--;
@@ -202,11 +253,23 @@ export class LineEditor {
     readline.clearLine(process.stdout, 0);
     readline.cursorTo(process.stdout, 0);
 
-    // Print prompt and buffer
-    process.stdout.write(this.prompt + this.buffer);
+    if (this.searchMode) {
+      // Display search mode UI
+      const currentMatch =
+        this.searchMatches.length > 0 ? this.searchMatches[this.searchIndex] : '';
+      const matchInfo =
+        this.searchMatches.length > 0
+          ? ` [${this.searchIndex + 1}/${this.searchMatches.length}]`
+          : ' [no matches]';
+      const searchPrompt = `(reverse-i-search)\`${this.searchQuery}': ${currentMatch}${matchInfo}`;
+      process.stdout.write(searchPrompt);
+    } else {
+      // Print prompt and buffer
+      process.stdout.write(this.prompt + this.buffer);
 
-    // Move cursor to correct position
-    readline.cursorTo(process.stdout, this.getPromptLength() + this.cursor);
+      // Move cursor to correct position
+      readline.cursorTo(process.stdout, this.getPromptLength() + this.cursor);
+    }
   }
 
   private getPromptLength(): number {
@@ -219,5 +282,77 @@ export class LineEditor {
   private cleanup() {
     this.active = false;
     this.stopRawMode();
+  }
+
+  private loadPreviousHistory() {
+    const prev = this.history.getPrevious(this.buffer);
+    if (prev !== null) {
+      this.buffer = prev;
+      this.cursor = this.buffer.length;
+      this.render();
+    }
+  }
+
+  private loadNextHistory() {
+    const next = this.history.getNext();
+    if (next !== null) {
+      this.buffer = next;
+      this.cursor = this.buffer.length;
+      this.render();
+    }
+  }
+
+  private enterSearchMode() {
+    this.searchMode = true;
+    this.searchQuery = '';
+    this.searchMatches = [];
+    this.searchIndex = 0;
+    this.render();
+  }
+
+  private exitSearchMode() {
+    this.searchMode = false;
+    this.searchQuery = '';
+    this.searchMatches = [];
+    this.searchIndex = 0;
+    this.render();
+  }
+
+  private updateSearch(char: string) {
+    this.searchQuery += char;
+    this.searchMatches = this.history.search(this.searchQuery);
+    this.searchIndex = 0;
+    this.render();
+  }
+
+  private navigateSearchUp() {
+    if (this.searchMatches.length > 0 && this.searchIndex > 0) {
+      this.searchIndex--;
+      this.render();
+    }
+  }
+
+  private navigateSearchDown() {
+    if (this.searchMatches.length > 0 && this.searchIndex < this.searchMatches.length - 1) {
+      this.searchIndex++;
+      this.render();
+    }
+  }
+
+  private selectSearchResult() {
+    if (this.searchMatches.length > 0) {
+      this.buffer = this.searchMatches[this.searchIndex];
+      this.cursor = this.buffer.length;
+    }
+    this.exitSearchMode();
+  }
+
+  private handleSearchBackspace() {
+    if (this.searchQuery.length > 0) {
+      this.searchQuery = this.searchQuery.slice(0, -1);
+      this.searchMatches = this.history.search(this.searchQuery);
+      this.searchIndex = 0;
+      this.render();
+    }
   }
 }

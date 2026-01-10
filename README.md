@@ -113,6 +113,37 @@ cadre --model gpt-4-turbo "review this code"
 | `/config` | Show current configuration    |
 | `/exit`   | Exit the session              |
 
+## Input History & Navigation
+
+Cadre provides full terminal-like command history navigation for efficient reuse of previous commands:
+
+### Arrow Key Navigation
+
+- **Up Arrow** (`↑`) - Navigate backward through previous commands
+- **Down Arrow** (`↓`) - Navigate forward through history or return to current input
+- History wraps at boundaries for seamless navigation
+
+### Reverse Search (Ctrl+R)
+
+Press `Ctrl+R` to enter reverse-i-search mode:
+
+```
+(reverse-i-search)`npm': npm install [1/3]
+```
+
+- **Type** to filter commands matching your query
+- **Up/Down** arrows to navigate through matches
+- **Enter** to select and use the matched command
+- **ESC** to cancel and return to normal input
+
+### History Persistence
+
+- History is automatically saved to `~/.ai/history`
+- Persists across sessions
+- Maximum 1000 entries (oldest automatically removed)
+- Empty commands and consecutive duplicates are ignored
+- Loads in <50ms even with 1000 entries
+
 ## CLI Commands
 
 ```bash

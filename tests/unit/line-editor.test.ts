@@ -155,4 +155,89 @@ describe('LineEditor', () => {
     const result = await promise;
     expect(result).toBe('ad');
   });
+
+  describe('history navigation', () => {
+    it('should navigate backward with up arrow', async () => {
+      // First, add some history by completing inputs
+      let promise = lineEditor.read('> ');
+      emitKey('c');
+      emitKey('m');
+      emitKey('d');
+      emitKey('1');
+      emitKey(13);
+      await promise;
+
+      promise = lineEditor.read('> ');
+      emitKey('c');
+      emitKey('m');
+      emitKey('d');
+      emitKey('2');
+      emitKey(13);
+      await promise;
+
+      // Now test navigation
+      promise = lineEditor.read('> ');
+      emitKey('\u001b[A'); // Up arrow -> should load cmd2
+      emitKey(13);
+
+      const result = await promise;
+      expect(result).toBe('cmd2');
+    });
+
+    it('should navigate forward with down arrow', async () => {
+      // Add history
+      let promise = lineEditor.read('> ');
+      emitKey('c');
+      emitKey('m');
+      emitKey('d');
+      emitKey('1');
+      emitKey(13);
+      await promise;
+
+      promise = lineEditor.read('> ');
+      emitKey('c');
+      emitKey('m');
+      emitKey('d');
+      emitKey('2');
+      emitKey(13);
+      await promise;
+
+      // Navigate backward then forward
+      promise = lineEditor.read('> ');
+      emitKey('t');
+      emitKey('e');
+      emitKey('s');
+      emitKey('t');
+      emitKey('\u001b[A'); // Up -> cmd2
+      emitKey('\u001b[A'); // Up -> cmd1
+      emitKey('\u001b[B'); // Down -> cmd2
+      emitKey(13);
+
+      const result = await promise;
+      expect(result).toBe('cmd2');
+    });
+
+    it('should return to original input when navigating past history end', async () => {
+      // Add history
+      let promise = lineEditor.read('> ');
+      emitKey('c');
+      emitKey('m');
+      emitKey('d');
+      emitKey('1');
+      emitKey(13);
+      await promise;
+
+      // Type something, navigate, then come back
+      promise = lineEditor.read('> ');
+      emitKey('n');
+      emitKey('e');
+      emitKey('w');
+      emitKey('\u001b[A'); // Up -> cmd1
+      emitKey('\u001b[B'); // Down -> should return to 'new'
+      emitKey(13);
+
+      const result = await promise;
+      expect(result).toBe('new');
+    });
+  });
 });
