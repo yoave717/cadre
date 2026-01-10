@@ -1,4 +1,4 @@
-import { findGitRoot, getProjectName } from './git.js';
+import { findGitRoot } from './git.js';
 import {
   PermissionType,
   hasStoredPermission,
@@ -8,19 +8,19 @@ import {
   clearAllPermissions,
   ProjectPermissions,
 } from './storage.js';
-import { promptForPermission, PermissionResponse } from './prompt.js';
+import { promptForPermission } from './prompt.js';
 
 /**
  * Session-level permissions that expire when the process exits.
  * Maps project path to set of granted permission types.
  */
-const sessionGrants: Map<string, Set<PermissionType>> = new Map();
-
-/**
- * Permission manager handles checking and requesting permissions
- * for operations on files and directories.
- */
 export class PermissionManager {
+  /**
+   * Session-level permissions that expire when the process exits.
+   * Maps project path to set of granted permission types.
+   */
+  private sessionGrants: Map<string, Set<PermissionType>> = new Map();
+
   /**
    * Check if permission is granted (from storage or session).
    */
@@ -28,7 +28,7 @@ export class PermissionManager {
     const projectKey = await this.getProjectKey(targetPath);
 
     // Check session grants first (faster)
-    const sessionSet = sessionGrants.get(projectKey);
+    const sessionSet = this.sessionGrants.get(projectKey);
     if (sessionSet?.has(type)) {
       return true;
     }
@@ -67,6 +67,9 @@ export class PermissionManager {
 
       case 'deny':
         return false;
+
+      default:
+        return false;
     }
   }
 
@@ -74,15 +77,16 @@ export class PermissionManager {
    * Grant a session-level permission (cleared on exit).
    */
   grantSession(projectPath: string, type: PermissionType): void {
-    if (!sessionGrants.has(projectPath)) {
-      sessionGrants.set(projectPath, new Set());
+    if (!this.sessionGrants.has(projectPath)) {
+      this.sessionGrants.set(projectPath, new Set());
     }
-    sessionGrants.get(projectPath)!.add(type);
+    this.sessionGrants.get(projectPath)!.add(type);
   }
 
   /**
    * Grant a permanent permission.
    */
+
   async grantPermanent(projectPath: string, type: PermissionType): Promise<void> {
     await grantPermission(projectPath, type);
   }
@@ -93,9 +97,9 @@ export class PermissionManager {
   async revoke(projectPath: string, type?: PermissionType): Promise<void> {
     // Clear session grants
     if (type) {
-      sessionGrants.get(projectPath)?.delete(type);
+      this.sessionGrants.get(projectPath)?.delete(type);
     } else {
-      sessionGrants.delete(projectPath);
+      this.sessionGrants.delete(projectPath);
     }
 
     // Clear stored permissions
@@ -105,6 +109,7 @@ export class PermissionManager {
   /**
    * List all stored permissions.
    */
+
   async list(): Promise<Record<string, ProjectPermissions>> {
     return listPermissions();
   }
@@ -113,13 +118,14 @@ export class PermissionManager {
    * Clear all permissions (session and stored).
    */
   async clearAll(): Promise<void> {
-    sessionGrants.clear();
+    this.sessionGrants.clear();
     await clearAllPermissions();
   }
 
   /**
    * Get the project key (git root or directory) for a path.
    */
+
   private async getProjectKey(targetPath: string): Promise<string> {
     const gitRoot = await findGitRoot(targetPath);
     // Use git root if in a git project, otherwise use the current working directory

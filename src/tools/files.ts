@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+
 import { getPermissionManager } from '../permissions/index.js';
 
 // Track which files have been read in this session (for safety)
@@ -16,8 +17,9 @@ export const listFiles = async (dirPath: string = '.'): Promise<string> => {
     });
 
     return `Contents of ${absolutePath}:\n${formatted.join('\n')}`;
-  } catch (error: any) {
-    return `Error listing files: ${error.message}`;
+  } catch (error) {
+    const err = error as Error;
+    return `Error listing files: ${err.message}`;
   }
 };
 
@@ -54,14 +56,17 @@ export const readFile = async (
 
     // Truncate if too large
     if (numbered.length > 2000) {
-      return (
-        `${numbered.slice(0, 2000).join('\n') 
-                }\n... (truncated, ${lines.length - 2000} more lines. Use offset/limit to read more)`);
+      return `${numbered
+        .slice(0, 2000)
+        .join(
+          '\n',
+        )}\n... (truncated, ${lines.length - 2000} more lines. Use offset/limit to read more)`;
     }
 
     return numbered.join('\n');
-  } catch (error: any) {
-    return `Error reading file: ${error.message}`;
+  } catch (error) {
+    const err = error as Error;
+    return `Error reading file: ${err.message}`;
   }
 };
 
@@ -100,8 +105,9 @@ export const writeFile = async (filePath: string, content: string): Promise<stri
 
     const lines = content.split('\n').length;
     return `Successfully wrote ${lines} lines to ${filePath}`;
-  } catch (error: any) {
-    return `Error writing file: ${error.message}`;
+  } catch (error) {
+    const err = error as Error;
+    return `Error writing file: ${err.message}`;
   }
 };
 
@@ -123,8 +129,9 @@ export const createDirectory = async (dirPath: string): Promise<string> => {
   try {
     await fs.mkdir(absolutePath, { recursive: true });
     return `Successfully created directory ${dirPath}`;
-  } catch (error: any) {
-    return `Error creating directory: ${error.message}`;
+  } catch (error) {
+    const err = error as Error;
+    return `Error creating directory: ${err.message}`;
   }
 };
 

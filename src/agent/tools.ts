@@ -221,40 +221,36 @@ export const TOOLS: ChatCompletionTool[] = [
   },
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handleToolCall = async (name: string, args: any): Promise<string> => {
   switch (name) {
     // File operations
     case 'list_files':
-      return await fileTools.listFiles(args.path);
+      return fileTools.listFiles(args.path);
     case 'read_file':
-      return await fileTools.readFile(args.path, args.offset, args.limit);
+      return fileTools.readFile(args.path, args.offset, args.limit);
     case 'write_file':
-      return await fileTools.writeFile(args.path, args.content);
+      return fileTools.writeFile(args.path, args.content);
     case 'edit_file':
-      return await editTools.editFile(
-        args.path,
-        args.old_string,
-        args.new_string,
-        args.replace_all,
-      );
+      return editTools.editFile(args.path, args.old_string, args.new_string, args.replace_all);
     case 'create_directory':
-      return await fileTools.createDirectory(args.path);
+      return fileTools.createDirectory(args.path);
 
     // Search operations
     case 'glob':
-      return await globTools.globFiles(args.pattern, { cwd: args.path });
+      return globTools.globFiles(args.pattern, { cwd: args.path });
     case 'grep':
-      return await grepTools.grepFiles(args.pattern, {
+      return grepTools.grepFiles(args.pattern, {
         cwd: args.path,
         glob: args.glob,
         contextLines: args.context_lines,
       });
     case 'directory_tree':
-      return await globTools.directoryTree(args.path, args.max_depth);
+      return globTools.directoryTree(args.path, args.max_depth);
 
     // Shell operations
     case 'run_command':
-      return await runTools.runCommand(args.command, args.cwd);
+      return runTools.runCommand(args.command, args.cwd);
 
     default:
       return `Unknown tool: ${name}`;

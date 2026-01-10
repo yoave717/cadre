@@ -44,8 +44,8 @@ export const getConfig = (): ConfigSchema => {
     openaiBaseUrl:
       process.env.OPENAI_BASE_URL || process.env.API_BASE_URL || config.get('openaiBaseUrl'),
     modelName: process.env.MODEL_NAME || process.env.OPENAI_MODEL || config.get('modelName'),
-    maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || '') || 128000,
-    maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS || '') || 16000,
+    maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || '', 10) || 128000,
+    maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS || '', 10) || 16000,
   };
 };
 

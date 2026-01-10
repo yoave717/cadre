@@ -1,0 +1,15 @@
+
+> cadre@1.0.0 lint
+> eslint . --ext .ts
+
+
+/Users/yoavelkayam/cadre/src/agent/index.ts
+   66:24  error  Unexpected `await` inside a loop                                                                                                                                           no-await-in-loop
+   79:9   error  iterators/generators require regenerator-runtime, which is too heavyweight for this guide to allow them. Separately, loops should be avoided in favor of array iterations  no-restricted-syntax
+   79:9   error  Unexpected `await` inside a loop                                                                                                                                           no-await-in-loop
+   90:13  error  iterators/generators require regenerator-runtime, which is too heavyweight for this guide to allow them. Separately, loops should be avoided in favor of array iterations  no-restricted-syntax
+  145:31  error  Unexpected `await` inside a loop                                                                                                                                           no-await-in-loop
+  162:11  error  iterators/generators require regenerator-runtime, which is too heavyweight for this guide to allow them. Separately, loops should be avoided in favor of array iterations  no-restricted-syntax
+
+✖ 6 problems (6 errors, 0 warnings)
+

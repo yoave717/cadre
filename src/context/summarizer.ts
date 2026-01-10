@@ -3,18 +3,24 @@ import { getConfig } from '../config.js';
 import { estimateTokens } from './tokenizer.js';
 
 // Generic message type for compatibility
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Message = { role: string; content?: any; tool_calls?: any[]; [key: string]: any };
 
 /**
  * Extract string content from a message.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getContent(content: any): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
-    return content
-      .filter((p: any) => p.type === 'text')
-      .map((p: any) => p.text || '')
-      .join(' ');
+    return (
+      content
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((p: any) => p.type === 'text')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((p: any) => p.text || '')
+        .join(' ')
+    );
   }
   return '';
 }
@@ -38,6 +44,7 @@ export async function summarizeConversation(
       if (msg.role === 'assistant') {
         let text = `Assistant: ${getContent(msg.content) || ''}`;
         if (msg.tool_calls) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const toolNames = msg.tool_calls.map((t: any) => t.function?.name).join(', ');
           text += ` [Used tools: ${toolNames}]`;
         }
@@ -73,8 +80,9 @@ Summary:`;
     });
 
     return response.choices[0]?.message?.content || 'Unable to generate summary.';
-  } catch (error) {
+  } catch {
     // If summarization fails, return a simple fallback
+
     return generateFallbackSummary(messages);
   }
 }

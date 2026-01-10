@@ -68,13 +68,15 @@ export const runCommand = async (command: string, cwd?: string): Promise<string>
       result += `${result ? '\n' : ''}stderr:\n${stderr}`;
     }
     return result || 'Command completed with no output.';
-  } catch (error: any) {
-    let result = `Error running command: ${error.message}`;
-    if (error.stdout) {
-      result += `\nstdout:\n${error.stdout}`;
+  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const err = error as any;
+    let result = `Error running command: ${err.message}`;
+    if (err.stdout) {
+      result += `\nstdout:\n${err.stdout}`;
     }
-    if (error.stderr) {
-      result += `\nstderr:\n${error.stderr}`;
+    if (err.stderr) {
+      result += `\nstderr:\n${err.stderr}`;
     }
     return result;
   }

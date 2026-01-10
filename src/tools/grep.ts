@@ -131,7 +131,8 @@ async function searchDirectory(
   const ignorePatterns = [...DEFAULT_IGNORE, ...(options.ignore || [])];
 
   try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const entries: any[] = await fs.readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
       if (results.length >= maxResults) break;
@@ -148,7 +149,9 @@ async function searchDirectory(
         await searchDirectory(fullPath, baseDir, pattern, options, results);
       } else if (entry.isFile()) {
         // Skip binary files
-        if (isBinaryFile(fullPath)) continue;
+        if (isBinaryFile(fullPath)) {
+          continue;
+        }
 
         // Apply glob filter if specified
         if (options.glob && !matchGlob(relativePath, options.glob)) {
@@ -156,10 +159,11 @@ async function searchDirectory(
         }
 
         // Search file
+
         await searchFile(fullPath, relativePath, pattern, options, results, maxResults);
       }
     }
-  } catch (error) {
+  } catch {
     // Ignore permission errors
   }
 }
@@ -180,7 +184,7 @@ async function searchFile(
     const lines = content.split('\n');
     const contextLines = options.contextLines || 0;
 
-    for (let i = 0; i < lines.length; i++) {
+    for (let i = 0; i < lines.length; i += 1) {
       if (results.length >= maxResults) break;
 
       if (pattern.test(lines[i])) {
@@ -201,7 +205,7 @@ async function searchFile(
         results.push(match);
       }
     }
-  } catch (error) {
+  } catch {
     // Skip files that can't be read
   }
 }
@@ -225,7 +229,7 @@ export const grepFiles = async (
   let pattern: RegExp;
   try {
     pattern = new RegExp(searchPattern, flags);
-  } catch (error) {
+  } catch {
     return `Error: Invalid regex pattern: ${searchPattern}`;
   }
 
@@ -245,14 +249,14 @@ export const grepFiles = async (
 
     if (match.context) {
       if (match.context.before.length > 0) {
-        for (let i = 0; i < match.context.before.length; i++) {
+        for (let i = 0; i < match.context.before.length; i += 1) {
           const lineNum = match.line - match.context.before.length + i;
           output += `  ${lineNum}: ${match.context.before[i]}\n`;
         }
       }
       output += `> ${match.line}: ${match.content}\n`;
       if (match.context.after.length > 0) {
-        for (let i = 0; i < match.context.after.length; i++) {
+        for (let i = 0; i < match.context.after.length; i += 1) {
           const lineNum = match.line + 1 + i;
           output += `  ${lineNum}: ${match.context.after[i]}\n`;
         }
@@ -285,7 +289,7 @@ export const grepCount = async (
   let pattern: RegExp;
   try {
     pattern = new RegExp(searchPattern, flags);
-  } catch (error) {
+  } catch {
     return `Error: Invalid regex pattern: ${searchPattern}`;
   }
 
@@ -335,7 +339,7 @@ export const grepFilesOnly = async (
   let pattern: RegExp;
   try {
     pattern = new RegExp(searchPattern, flags);
-  } catch (error) {
+  } catch {
     return `Error: Invalid regex pattern: ${searchPattern}`;
   }
 

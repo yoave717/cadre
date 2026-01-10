@@ -23,10 +23,14 @@ function extractTextContent(content: unknown): string {
     return content;
   }
   if (Array.isArray(content)) {
-    return content
-      .filter((part: any) => part.type === 'text')
-      .map((part: any) => part.text || '')
-      .join('\n');
+    return (
+      content
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((part: any) => part.type === 'text')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((part: any) => part.text || '')
+        .join('\n')
+    );
   }
   return '';
 }
@@ -35,6 +39,7 @@ function extractTextContent(content: unknown): string {
  * Estimate token count from a message.
  * Compatible with OpenAI ChatCompletionMessageParam types.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function estimateMessageTokens(message: any): number {
   let tokens = 4; // Base overhead per message
 
@@ -61,6 +66,7 @@ export function estimateMessageTokens(message: any): number {
  * Estimate total tokens in a conversation.
  * Compatible with OpenAI ChatCompletionMessageParam types.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function estimateConversationTokens(messages: any[]): number {
   return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
 }

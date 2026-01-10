@@ -54,18 +54,14 @@ function matchPattern(filePath: string, pattern: string): boolean {
 function shouldIgnore(relativePath: string, ignorePatterns: string[]): boolean {
   const parts = relativePath.split(path.sep);
 
-  for (const pattern of ignorePatterns) {
+  return ignorePatterns.some((pattern) => {
     // Check if any part of the path matches the ignore pattern
     if (parts.some((part) => matchPattern(part, pattern))) {
       return true;
     }
     // Also check full path match
-    if (matchPattern(relativePath, pattern)) {
-      return true;
-    }
-  }
-
-  return false;
+    return matchPattern(relativePath, pattern);
+  });
 }
 
 /**
@@ -97,6 +93,7 @@ async function walkDirectory(
 
       if (entry.isDirectory()) {
         // Recurse into directory
+
         await walkDirectory(fullPath, baseDir, pattern, ignorePatterns, results, maxResults);
       } else if (entry.isFile()) {
         // Check if file matches pattern
@@ -105,7 +102,7 @@ async function walkDirectory(
         }
       }
     }
-  } catch (error) {
+  } catch {
     // Ignore permission errors and continue
   }
 }
@@ -138,8 +135,9 @@ export const globFiles = async (pattern: string, options: GlobOptions = {}): Pro
     }
 
     return output;
-  } catch (error: any) {
-    return `Error searching files: ${error.message}`;
+  } catch (error) {
+    const err = error as Error;
+    return `Error searching files: ${err.message}`;
   }
 };
 
@@ -186,7 +184,7 @@ export const directoryTree = async (
         (e) => !DEFAULT_IGNORE.some((ignore) => e.name === ignore || matchPattern(e.name, ignore)),
       );
 
-      for (let i = 0; i < filtered.length; i++) {
+      for (let i = 0; i < filtered.length; i += 1) {
         const entry = filtered[i];
         const isLast = i === filtered.length - 1;
         const connector = isLast ? '└── ' : '├── ';
@@ -194,12 +192,13 @@ export const directoryTree = async (
 
         if (entry.isDirectory()) {
           lines.push(`${prefix}${connector}${entry.name}/`);
+
           await buildTree(path.join(dir, entry.name), prefix + childPrefix, depth + 1);
         } else {
           lines.push(`${prefix}${connector}${entry.name}`);
         }
       }
-    } catch (error) {
+    } catch {
       lines.push(`${prefix}[error reading directory]`);
     }
   }

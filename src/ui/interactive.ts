@@ -3,11 +3,13 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { marked } from 'marked';
 import TerminalRenderer from 'marked-terminal';
-import { Agent, AgentEvent } from '../agent/index.js';
+import { Agent } from '../agent/index.js';
 import { getConfig } from '../config.js';
 
 // Configure marked for terminal rendering
+// Configure marked for terminal rendering
 marked.setOptions({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   renderer: new TerminalRenderer() as any,
 });
 
@@ -58,7 +60,7 @@ async function processPrompt(agent: Agent, prompt: string): Promise<string> {
         spinner.text = chalk.blue(`⚡ ${event.name}`) + chalk.dim(` ${formatArgs(event.args)}`);
         break;
 
-      case 'tool_result':
+      case 'tool_result': {
         spinner.succeed(chalk.blue(`⚡ ${event.name}`) + chalk.green(' ✓'));
         // Show truncated result for context
         const preview = event.result.slice(0, 200);
@@ -69,6 +71,7 @@ async function processPrompt(agent: Agent, prompt: string): Promise<string> {
         }
         spinner.start('Thinking...');
         break;
+      }
 
       case 'turn_done':
         spinner.stop();
@@ -76,6 +79,9 @@ async function processPrompt(agent: Agent, prompt: string): Promise<string> {
 
       case 'error':
         spinner.fail(chalk.red(`Error: ${event.message}`));
+        break;
+
+      default:
         break;
     }
   }
@@ -136,6 +142,7 @@ export const startInteractiveSession = async (initialPrompt?: string): Promise<v
   }
 
   // Interactive loop
+
   while (true) {
     try {
       const answer = await input({ message: chalk.green('❯') });
@@ -163,7 +170,7 @@ export const startInteractiveSession = async (initialPrompt?: string): Promise<v
 };
 
 async function handleSlashCommand(command: string, agent: Agent): Promise<boolean | 'exit'> {
-  const [cmd, ...args] = command.slice(1).split(' ');
+  const [cmd] = command.slice(1).split(' ');
 
   switch (cmd.toLowerCase()) {
     case 'exit':
@@ -178,7 +185,7 @@ async function handleSlashCommand(command: string, agent: Agent): Promise<boolea
       console.log(chalk.dim('Context cleared.'));
       return true;
 
-    case 'config':
+    case 'config': {
       console.log(chalk.bold('Current Configuration:'));
       const config = getConfig();
       console.log(chalk.dim(`  Model:    ${config.modelName}`));
@@ -189,10 +196,11 @@ async function handleSlashCommand(command: string, agent: Agent): Promise<boolea
         ),
       );
       return true;
+    }
 
     case 'tokens':
     case 'context':
-    case 'stats':
+    case 'stats': {
       const stats = agent.getContextStats();
       console.log(chalk.bold('\nContext Statistics:'));
       console.log(
@@ -207,6 +215,7 @@ async function handleSlashCommand(command: string, agent: Agent): Promise<boolea
       }
       console.log('');
       return true;
+    }
 
     case 'help':
     case '?':
@@ -224,7 +233,7 @@ async function handleSlashCommand(command: string, agent: Agent): Promise<boolea
   }
 }
 
-function formatArgs(args: any): string {
+function formatArgs(args: unknown): string {
   if (!args) return '';
   const str = JSON.stringify(args);
   if (str.length > 60) {

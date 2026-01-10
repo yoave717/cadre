@@ -4,9 +4,12 @@ import { summarizeConversation, summarizeToolResult, updateRollingSummary } from
 // Use generic message type to avoid OpenAI type conflicts
 export type Message = {
   role: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   content?: string | null | any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tool_calls?: any[];
   tool_call_id?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 };
 
@@ -87,7 +90,7 @@ export class ContextManager {
     let recentTokens = 0;
     let splitIndex = conversationMessages.length;
 
-    for (let i = conversationMessages.length - 1; i >= 0; i--) {
+    for (let i = conversationMessages.length - 1; i >= 0; i -= 1) {
       const msgTokens = estimateMessageTokens(conversationMessages[i]);
       if (recentTokens + msgTokens > recentBudget) {
         splitIndex = i + 1;

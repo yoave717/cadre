@@ -68,8 +68,9 @@ export const editFile = async (
     await fs.writeFile(absolutePath, newContent, 'utf-8');
 
     return `Successfully edited ${filePath}: replaced ${replacementCount} occurrence(s).`;
-  } catch (error: any) {
-    return `Error editing file: ${error.message}`;
+  } catch (error) {
+    const err = error as Error;
+    return `Error editing file: ${err.message}`;
   }
 };
 
@@ -114,8 +115,9 @@ export const insertAtLine = async (
     await fs.writeFile(absolutePath, lines.join('\n'), 'utf-8');
 
     return `Successfully inserted content at line ${lineNumber} in ${filePath}.`;
-  } catch (error: any) {
-    return `Error inserting content: ${error.message}`;
+  } catch (error) {
+    const err = error as Error;
+    return `Error inserting content: ${err.message}`;
   }
 };
 
@@ -161,7 +163,8 @@ export const deleteLines = async (
     await fs.writeFile(absolutePath, lines.join('\n'), 'utf-8');
 
     return `Successfully deleted ${deletedCount} line(s) from ${filePath}.`;
-  } catch (error: any) {
-    return `Error deleting lines: ${error.message}`;
+  } catch (error) {
+    const err = error as Error;
+    return `Error deleting lines: ${err.message}`;
   }
 };

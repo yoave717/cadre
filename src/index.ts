@@ -71,7 +71,6 @@ program
       return;
     }
 
-
     if (options.url) setConfig('openaiBaseUrl', options.url);
     if (options.setModel) setConfig('modelName', options.setModel);
     if (options.key) setConfig('openaiApiKey', options.key);
@@ -104,6 +103,7 @@ program
       }
 
       console.log(chalk.bold('\nGranted Permissions:'));
+
       for (const [path, perms] of entries) {
         console.log(chalk.blue(`\n  ${path}`));
         if (perms.bash) console.log(chalk.dim('    ✓ bash (run commands)'));

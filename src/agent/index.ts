@@ -1,4 +1,4 @@
-import { ChatCompletionMessageParam, ChatCompletionChunk } from 'openai/resources';
+import { ChatCompletionMessageParam } from 'openai/resources';
 import { getClient } from '../client.js';
 import { getConfig } from '../config.js';
 import { TOOLS, handleToolCall } from './tools.js';
@@ -8,7 +8,7 @@ export type AgentEvent =
   | { type: 'text_delta'; content: string } // Streaming text chunk
   | { type: 'text_done'; content: string } // Full text when complete
   | { type: 'tool_call_start'; name: string } // Tool call beginning
-  | { type: 'tool_call'; name: string; args: any }
+  | { type: 'tool_call'; name: string; args: Record<string, unknown> }
   | { type: 'tool_result'; name: string; result: string }
   | { type: 'error'; message: string }
   | { type: 'turn_done' } // Agent turn complete
@@ -62,6 +62,7 @@ Guidelines:
     try {
       while (true) {
         // Use streaming API
+
         const stream = await client.chat.completions.create({
           model: config.modelName,
           messages: this.history,
@@ -72,12 +73,11 @@ Guidelines:
 
         let textContent = '';
         const toolCalls: ToolCallAccumulator[] = [];
-        let currentToolCallIndex = -1;
 
+        // Process stream chunks
         // Process stream chunks
         for await (const chunk of stream) {
           const delta = chunk.choices[0]?.delta;
-          const finishReason = chunk.choices[0]?.finish_reason;
 
           // Handle text content streaming
           if (delta?.content) {
@@ -91,8 +91,8 @@ Guidelines:
               const { index } = toolCallDelta;
 
               // New tool call starting
+              // New tool call starting
               if (toolCallDelta.id) {
-                currentToolCallIndex = index;
                 toolCalls[index] = {
                   id: toolCallDelta.id,
                   name: toolCallDelta.function?.name || '',
@@ -122,7 +122,7 @@ Guidelines:
           };
 
           if (toolCalls.length > 0) {
-            (assistantMessage as any).tool_calls = toolCalls.map((tc) => ({
+            assistantMessage.tool_calls = toolCalls.map((tc) => ({
               id: tc.id,
               type: 'function' as const,
               function: {
@@ -142,17 +142,25 @@ Guidelines:
 
         // Execute tool calls if any
         if (toolCalls.length > 0) {
-          for (const toolCall of toolCalls) {
-            let args: any = {};
-            try {
-              args = JSON.parse(toolCall.arguments);
-            } catch {
-              args = {};
-            }
+          const toolResults = await Promise.all(
+            toolCalls.map(async (toolCall) => {
+              let args: Record<string, unknown> = {};
+              try {
+                args = JSON.parse(toolCall.arguments);
+              } catch {
+                args = {};
+              }
 
+              return {
+                toolCall,
+                args,
+                result: await handleToolCall(toolCall.name, args),
+              };
+            }),
+          );
+
+          for (const { toolCall, args, result } of toolResults) {
             yield { type: 'tool_call', name: toolCall.name, args };
-
-            const result = await handleToolCall(toolCall.name, args);
 
             // Truncate large tool results to save context
             const truncatedResult = this.contextManager.truncateToolResult(result);
@@ -171,8 +179,9 @@ Guidelines:
           break;
         }
       }
-    } catch (error: any) {
-      yield { type: 'error', message: error.message };
+    } catch (error) {
+      const err = error as Error;
+      yield { type: 'error', message: err.message };
     }
   }
 

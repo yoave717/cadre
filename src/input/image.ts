@@ -9,14 +9,11 @@ export interface ImageInput {
   source: string; // Original path/url for reference
 }
 
-// Supported image extensions
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'];
-
 // Image URL patterns
 const IMAGE_URL_PATTERN = /https?:\/\/[^\s]+\.(png|jpg|jpeg|gif|webp)/i;
 
 // File path patterns (Unix and Windows)
-const FILE_PATH_PATTERN = /(['"]?)([\/~][\w\-\.\/\\]+\.(png|jpg|jpeg|gif|webp|bmp))\1/i;
+const FILE_PATH_PATTERN = /(['"]?)([/~][\w-./\\]+\.(png|jpg|jpeg|gif|webp|bmp))\1/i;
 
 // Data URI pattern
 const DATA_URI_PATTERN = /data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/=]+)/;
@@ -41,6 +38,7 @@ export function detectImages(input: string): ImageDetection[] {
   if (fileMatch) {
     detections.push({
       type: 'file',
+
       value: expandPath(fileMatch[2]),
       original: fileMatch[0],
     });

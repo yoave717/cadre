@@ -42,7 +42,8 @@ export class MultiLineHandler {
       const heredocMatch = line.match(/^<<(\w+)$/);
       if (heredocMatch) {
         this.mode = 'heredoc';
-        this.delimiter = heredocMatch[1];
+        const [, delimiter] = heredocMatch;
+        this.delimiter = delimiter;
         this.buffer = [];
         return { complete: false, content: '', mode: this.mode };
       }
@@ -102,8 +103,8 @@ export class MultiLineHandler {
     // Count brackets (basic check - doesn't handle strings properly)
     const stripped = this.stripStrings(text);
 
-    const opens = (stripped.match(/[\{\[\(]/g) || []).length;
-    const closes = (stripped.match(/[\}\]\)]/g) || []).length;
+    const opens = (stripped.match(/[{[(]/g) || []).length;
+    const closes = (stripped.match(/[})\]]/g) || []).length;
 
     if (opens > closes) {
       return true;
@@ -116,6 +117,7 @@ export class MultiLineHandler {
    * Strip string contents to avoid false positives on bracket counting.
    * This is a simplified version - doesn't handle all edge cases.
    */
+
   private stripStrings(text: string): string {
     // Remove double-quoted strings
     let result = text.replace(/"(?:[^"\\]|\\.)*"/g, '""');
