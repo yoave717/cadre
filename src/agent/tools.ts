@@ -685,7 +685,6 @@ export const TOOLS: ChatCompletionTool[] = [
   },
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handleToolCall = async (
   name: string,
   args: any,

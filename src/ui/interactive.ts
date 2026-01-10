@@ -339,6 +339,20 @@ export const startInteractiveSession = async (
       // Skip empty input
       if (!trimmed) continue;
 
+      // Check if this request would benefit from parallel execution
+      const shouldUseParallel = await coordinator.shouldUseMultiWorker(result.content);
+      let useParallelMode = false;
+
+      if (shouldUseParallel) {
+        // Ask user if they want to use parallel mode
+        const answer = await lineEditor.read(
+          chalk.yellow(
+            '💡 This task might benefit from parallel execution. Use multi-worker mode? (y/n): ',
+          ),
+        );
+        useParallelMode = answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes';
+      }
+
       // Create a fresh abort controller for this turn
       const abortController = new AbortController();
 
@@ -356,7 +370,13 @@ export const startInteractiveSession = async (
       process.on('SIGINT', onSigInt);
 
       try {
-        await processPrompt(agent, result.content, abortController.signal);
+        if (useParallelMode) {
+          // Use multi-worker execution
+          await processWithMultiWorker(result.content, coordinator);
+        } else {
+          // Use standard single-agent execution
+          await processPrompt(agent, result.content, abortController.signal);
+        }
         console.log(''); // Extra line for readability
       } finally {
         process.off('SIGINT', onSigInt);
