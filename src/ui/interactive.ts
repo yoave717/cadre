@@ -10,6 +10,7 @@ import { loadConversation, listConversations } from '../commands/load.js';
 import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
 import { getConfig } from '../config.js';
 import { BranchManager } from '../context/branch-manager.js';
+import { SessionManager } from '../context/session-manager.js';
 
 // Configure marked for terminal rendering
 marked.setOptions({
@@ -186,10 +187,37 @@ export const startInteractiveSession = async (
   const lineEditor = new LineEditor();
 
   const branchManager = new BranchManager();
+  const sessionManager = new SessionManager();
   let currentBranch: string | null = null;
   let lastSigIntTime = 0;
 
+  // Load last active branch from session
+  try {
+    const lastBranch = await sessionManager.getLastBranch();
+    if (lastBranch && branchManager.branchExists(lastBranch)) {
+      const history = await branchManager.loadBranch(lastBranch);
+      // Replace agent history with branch history
+      agent.clearHistory();
+      history.forEach((msg) => agent.getHistory().push(msg));
+      currentBranch = lastBranch;
+      console.log(chalk.blue(`Resumed branch '${lastBranch}' from last session.`));
+    }
+  } catch {
+    // Ignore errors loading last branch
+  }
+
+  // Cache branch names for tab completion
+  let cachedBranchNames: string[] = [];
+
   while (true) {
+    // Refresh cached branch names
+    try {
+      const branches = await branchManager.listBranches();
+      cachedBranchNames = branches.map((b) => b.name);
+    } catch {
+      cachedBranchNames = [];
+    }
+
     try {
       const mode = multiLineHandler.getMode();
       let promptStr = getModePrompt(mode);
@@ -203,8 +231,20 @@ export const startInteractiveSession = async (
         promptStr = `You${branchStr} (tokens: ${tokens}): `;
       }
 
+      // Tab completion for /checkout command
+      const getCompletions = (text: string): string[] => {
+        if (text.startsWith('/checkout ')) {
+          const partial = text.slice(10).toLowerCase();
+          return cachedBranchNames
+            .filter((name) => name.toLowerCase().startsWith(partial))
+            .map((name) => `/checkout ${name}`);
+        }
+        return [];
+      };
+
       const answer = await lineEditor.read(
         mode === 'normal' ? chalk.green(promptStr) : chalk.yellow(promptStr),
+        { completionCallback: getCompletions },
       );
 
       // Pass to multi-line handler
@@ -223,6 +263,7 @@ export const startInteractiveSession = async (
           agent,
           multiLineHandler,
           branchManager,
+          sessionManager,
           lineEditor,
           currentBranch,
           (newBranch) => {
@@ -262,6 +303,9 @@ export const startInteractiveSession = async (
       // Auto-save branch if active
       if (currentBranch) {
         await branchManager.saveBranch(currentBranch, agent.getHistory());
+        await sessionManager.setLastBranch(currentBranch);
+      } else {
+        await sessionManager.setLastBranch(null);
       }
 
       // Check limits
@@ -307,6 +351,7 @@ async function handleSlashCommand(
   agent: Agent,
   multiLineHandler: MultiLineHandler,
   branchManager: BranchManager,
+  sessionManager: SessionManager,
   lineEditor: LineEditor,
   currentBranch: string | null,
   setBranch: (name: string | null) => void,
@@ -398,6 +443,8 @@ async function handleSlashCommand(
       console.log(chalk.dim('  /system [prompt] - View or update system prompt'));
       console.log(chalk.dim('  /save [name] - Save conversation to file'));
       console.log(chalk.dim('  /load [file] - Load conversation from file (or list available)'));
+      console.log(chalk.dim('  /branch [name] - Create a new branch or show current branch'));
+      console.log(chalk.dim('  /checkout <name> - Switch to a different branch'));
       console.log(chalk.dim('  /multi       - Enter multi-line input mode (end with /end)'));
       console.log(chalk.dim('  /help        - Show this help\n'));
       return true;
@@ -444,7 +491,55 @@ async function handleSlashCommand(
 
         await branchManager.createBranch(newBranchName, agent.getHistory());
         setBranch(newBranchName);
+        await sessionManager.setLastBranch(newBranchName);
         console.log(chalk.green(`Created and switched to branch '${newBranchName}'`));
+      } catch (error) {
+        const err = error as Error;
+        console.log(chalk.red(`Error: ${err.message}`));
+      }
+      return true;
+
+    case 'checkout':
+      if (args.length === 0) {
+        console.log(chalk.yellow('Usage: /checkout <branch-name>'));
+        return true;
+      }
+
+      try {
+        const targetBranch = args[0];
+        const config = getConfig();
+
+        // Check if target branch exists
+        if (!branchManager.branchExists(targetBranch)) {
+          console.log(chalk.red(`Branch '${targetBranch}' not found.`));
+          return true;
+        }
+
+        // Warn about unsaved changes if configured
+        if (config.warnUnsavedBranchSwitch && currentBranch) {
+          const confirm = await lineEditor.read(
+            chalk.yellow(`Switch from '${currentBranch}' to '${targetBranch}'? (y/n): `),
+          );
+          if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') {
+            console.log(chalk.dim('Checkout cancelled.'));
+            return true;
+          }
+        }
+
+        // Perform checkout
+        const newHistory = await branchManager.checkout(
+          targetBranch,
+          currentBranch,
+          agent.getHistory(),
+        );
+
+        // Replace agent history with loaded branch
+        agent.clearHistory();
+        newHistory.forEach((msg) => agent.getHistory().push(msg));
+
+        setBranch(targetBranch);
+        await sessionManager.setLastBranch(targetBranch);
+        console.log(chalk.green(`Switched to branch '${targetBranch}'`));
       } catch (error) {
         const err = error as Error;
         console.log(chalk.red(`Error: ${err.message}`));

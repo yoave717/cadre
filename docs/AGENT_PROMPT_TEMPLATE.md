@@ -85,3 +85,45 @@ _These apply to ALL tasks in addition to the specific DoD above._
 - **Build**: Code must pass `npm run build`.
 - **Safety**: Do not delete existing unrelated files.
 - **Dependencies**: Do not add new npm packages unless explicitly required by the user story.
+
+---
+
+## Git and Version Control
+
+You have access to specialized git tools for version control operations:
+
+### Git Tools
+
+- **`git_status`**: Check repository state (current branch, staged/unstaged files, untracked files)
+- **`git_branch`**: Manage branches (list, create, switch, delete)
+- **`git_commit`**: Create commits with proper messages
+- **`git_sync`**: Sync with remote (fetch, pull, push) with safety checks
+- **`git_log`**: View commit history
+- **`git_diff`**: View changes (working, staged, or against specific commits)
+
+### Gitflow Tools
+
+- **`gitflow_init`**: Initialize gitflow in repository
+- **`gitflow_feature`**: Manage feature branches (start, finish, list)
+- **`gitflow_release`**: Manage release branches (start, finish, list)
+- **`gitflow_hotfix`**: Manage hotfix branches (start, finish, list)
+
+### Git Best Practices
+
+1. **Always check status first**: Use `git_status` before making changes
+2. **Use conventional commits**: Format messages as `type(scope): description`
+   - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`
+3. **Never force push to protected branches**: Protected branches are `main`, `master`, `develop`, `production`
+4. **Follow gitflow conventions**: Use feature/, release/, and hotfix/ prefixes when applicable
+5. **Prefer git tools over run_command**: Use specialized git tools for better error handling and safety
+
+### Workflow References
+
+Reference the gitflow workflows in `.agent/workflows/` for detailed procedures:
+
+- `/git-commit` - Creating conventional commits
+- `/git-branch` - Branch management
+- `/git-sync` - Syncing with remote
+- `/git-pr` - Creating pull requests
+- `/git-stash` - Using git stash
+- `/git-reset` - Undoing changes

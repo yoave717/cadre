@@ -4,6 +4,8 @@ import * as runTools from '../tools/run.js';
 import * as editTools from '../tools/edit.js';
 import * as globTools from '../tools/glob.js';
 import * as grepTools from '../tools/grep.js';
+import * as gitTools from '../tools/git.js';
+import * as gitflowTools from '../tools/gitflow.js';
 
 export const TOOLS: ChatCompletionTool[] = [
   // File operations
@@ -202,7 +204,7 @@ export const TOOLS: ChatCompletionTool[] = [
     function: {
       name: 'run_command',
       description:
-        'Run a shell command. Use for git, npm, build tools, etc. Be cautious with destructive commands.',
+        'Run a shell command. Use for npm, build tools, etc. For git operations, prefer specialized git tools.',
       parameters: {
         type: 'object',
         properties: {
@@ -216,6 +218,262 @@ export const TOOLS: ChatCompletionTool[] = [
           },
         },
         required: ['command'],
+      },
+    },
+  },
+
+  // Git operations
+  {
+    type: 'function',
+    function: {
+      name: 'git_status',
+      description:
+        'Get current git repository status with structured output. Shows current branch, staged/unstaged files, and untracked files.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'git_branch',
+      description:
+        'Git branch operations: list all branches, create new branch, switch to existing branch, or delete branch.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operation: {
+            type: 'string',
+            description: "Operation to perform: 'list', 'create', 'switch', or 'delete'",
+            enum: ['list', 'create', 'switch', 'delete'],
+          },
+          branch_name: {
+            type: 'string',
+            description: 'Branch name (required for create, switch, and delete operations)',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['operation'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'git_commit',
+      description:
+        'Create a git commit. Stages files (or all changes) and commits with the given message. Use conventional commit format.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: {
+            type: 'string',
+            description:
+              "Commit message. Use conventional commit format: 'type(scope): description'",
+          },
+          files: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Specific files to stage and commit (if omitted, stages all changes)',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['message'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'git_sync',
+      description:
+        'Sync with remote repository: fetch, pull, or push changes. Includes safety checks for protected branches.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operation: {
+            type: 'string',
+            description: "Operation to perform: 'fetch', 'pull', or 'push'",
+            enum: ['fetch', 'pull', 'push'],
+          },
+          remote: {
+            type: 'string',
+            description: "Remote name (defaults to 'origin')",
+          },
+          branch: {
+            type: 'string',
+            description: 'Branch name (optional, uses current branch if omitted)',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['operation'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'git_log',
+      description: 'View git commit history with formatted output.',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: {
+            type: 'number',
+            description: 'Number of commits to show (default: 10)',
+          },
+          format: {
+            type: 'string',
+            description: "Output format: 'oneline' or 'detailed' (default: 'oneline')",
+            enum: ['oneline', 'detailed'],
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'git_diff',
+      description:
+        'View git diff for working directory, staged changes, or against a specific commit/branch.',
+      parameters: {
+        type: 'object',
+        properties: {
+          target: {
+            type: 'string',
+            description:
+              "What to diff: 'working' (unstaged changes), 'staged' (staged changes), or a commit/branch reference",
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: [],
+      },
+    },
+  },
+
+  // Gitflow operations
+  {
+    type: 'function',
+    function: {
+      name: 'gitflow_init',
+      description:
+        'Initialize gitflow in the repository. Sets up main/develop branches and gitflow configuration.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gitflow_feature',
+      description:
+        'Gitflow feature operations: start new feature, finish feature (merge to develop), or list features.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            description: "Action to perform: 'start', 'finish', or 'list'",
+            enum: ['start', 'finish', 'list'],
+          },
+          name: {
+            type: 'string',
+            description: 'Feature name (required for start and finish)',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gitflow_release',
+      description:
+        'Gitflow release operations: start release branch, finish release (merge to main and develop, create tag), or list releases.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            description: "Action to perform: 'start', 'finish', or 'list'",
+            enum: ['start', 'finish', 'list'],
+          },
+          version: {
+            type: 'string',
+            description: 'Version number (required for start and finish)',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gitflow_hotfix',
+      description:
+        'Gitflow hotfix operations: start hotfix from main, finish hotfix (merge to main and develop, create tag), or list hotfixes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            description: "Action to perform: 'start', 'finish', or 'list'",
+            enum: ['start', 'finish', 'list'],
+          },
+          version: {
+            type: 'string',
+            description: 'Version number (required for start and finish)',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['action'],
       },
     },
   },
@@ -251,6 +509,30 @@ export const handleToolCall = async (name: string, args: any): Promise<string> =
     // Shell operations
     case 'run_command':
       return runTools.runCommand(args.command, args.cwd);
+
+    // Git operations
+    case 'git_status':
+      return gitTools.gitStatus(args.cwd);
+    case 'git_branch':
+      return gitTools.gitBranch(args.operation, args.branch_name, args.cwd);
+    case 'git_commit':
+      return gitTools.gitCommit(args.message, args.files, args.cwd);
+    case 'git_sync':
+      return gitTools.gitSync(args.operation, args.remote, args.branch, args.cwd);
+    case 'git_log':
+      return gitTools.gitLog(args.limit, args.format, args.cwd);
+    case 'git_diff':
+      return gitTools.gitDiff(args.target, args.cwd);
+
+    // Gitflow operations
+    case 'gitflow_init':
+      return gitflowTools.gitflowInit(args.cwd);
+    case 'gitflow_feature':
+      return gitflowTools.gitflowFeature(args.action, args.name, args.cwd);
+    case 'gitflow_release':
+      return gitflowTools.gitflowRelease(args.action, args.version, args.cwd);
+    case 'gitflow_hotfix':
+      return gitflowTools.gitflowHotfix(args.action, args.version, args.cwd);
 
     default:
       return `Unknown tool: ${name}`;

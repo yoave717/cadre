@@ -43,7 +43,7 @@ export class HistoryManager {
       }
     } catch (error) {
       // Silently fail - history is not critical
-      // eslint-disable-next-line no-console
+
       console.error('Failed to load history:', error);
     }
   }
@@ -161,17 +161,12 @@ export class HistoryManager {
    * Save history to disk asynchronously.
    */
   private async save(): Promise<void> {
-    try {
-      // Ensure directory exists
-      await fsPromises.mkdir(HISTORY_DIR, { recursive: true });
+    // Ensure directory exists
+    await fsPromises.mkdir(HISTORY_DIR, { recursive: true });
 
-      // Write history file
-      const content = this.history.join('\n');
-      await fsPromises.writeFile(HISTORY_FILE, content, 'utf-8');
-    } catch (error) {
-      // Silently fail - history save is not critical
-      throw error;
-    }
+    // Write history file
+    const content = this.history.join('\n');
+    await fsPromises.writeFile(HISTORY_FILE, content, 'utf-8');
   }
 
   /**

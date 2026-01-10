@@ -95,4 +95,81 @@ describe('BranchManager', () => {
       'Branch limit reached (10)',
     );
   });
+
+  it('should check if branch exists', async () => {
+    const history = [{ role: 'user', content: 'hello', timestamp: 123 }];
+    await manager.createBranch('test-branch', history as any);
+
+    expect(manager.branchExists('test-branch')).toBe(true);
+    expect(manager.branchExists('nonexistent')).toBe(false);
+  });
+
+  it('should checkout to an existing branch', async () => {
+    const historyA = [
+      { role: 'user', content: 'message A1', timestamp: 1 },
+      { role: 'assistant', content: 'response A1', timestamp: 2 },
+    ];
+    const historyB = [
+      { role: 'user', content: 'message B1', timestamp: 1 },
+      { role: 'assistant', content: 'response B1', timestamp: 2 },
+    ];
+
+    await manager.createBranch('branch-a', historyA as any);
+    await manager.createBranch('branch-b', historyB as any);
+
+    // Checkout from A to B
+    const loadedHistory = await manager.checkout('branch-b', 'branch-a', historyA as any);
+
+    expect(loadedHistory).toHaveLength(2);
+    expect(loadedHistory[0].content).toBe('message B1');
+    expect(loadedHistory[1].content).toBe('response B1');
+  });
+
+  it('should throw error when checking out non-existent branch', async () => {
+    const history = [{ role: 'user', content: 'hello', timestamp: 123 }];
+    await manager.createBranch('existing', history as any);
+
+    await expect(manager.checkout('nonexistent', 'existing', history as any)).rejects.toThrow(
+      "Branch 'nonexistent' not found.",
+    );
+  });
+
+  it('should auto-save current branch before checkout', async () => {
+    const historyA = [{ role: 'user', content: 'original A', timestamp: 1 }];
+    const historyB = [{ role: 'user', content: 'original B', timestamp: 2 }];
+
+    await manager.createBranch('branch-a', historyA as any);
+    await manager.createBranch('branch-b', historyB as any);
+
+    // Modify history A and checkout to B
+    const modifiedHistoryA = [
+      ...historyA,
+      { role: 'assistant', content: 'new message', timestamp: 3 },
+    ];
+
+    await manager.checkout('branch-b', 'branch-a', modifiedHistoryA as any);
+
+    // Load branch A again and verify it was saved
+    const loadedA = await manager.loadBranch('branch-a');
+    expect(loadedA).toHaveLength(2);
+    expect(loadedA[1].content).toBe('new message');
+  });
+
+  it('should complete checkout in under 100ms', async () => {
+    // Create branch with moderate history
+    const history = Array.from({ length: 50 }, (_, i) => ({
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      content: `Message ${i}`,
+      timestamp: i,
+    }));
+
+    await manager.createBranch('branch-a', history as any);
+    await manager.createBranch('branch-b', history as any);
+
+    const startTime = Date.now();
+    await manager.checkout('branch-b', 'branch-a', history as any);
+    const duration = Date.now() - startTime;
+
+    expect(duration).toBeLessThan(100);
+  });
 });
