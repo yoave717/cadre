@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { getCompletions, getInlineSuggestion, getCommandSuggestions } from '../../src/input/completion.js';
+import {
+  getCompletions,
+  getInlineSuggestion,
+  getCommandSuggestions,
+} from '../../src/input/completion.js';
 
 describe('Completion System', () => {
   let testDir: string;
@@ -10,7 +14,7 @@ describe('Completion System', () => {
   beforeEach(async () => {
     // Create a temporary directory for testing
     testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cadre-completion-test-'));
-    
+
     // Create some test files and directories
     await fs.mkdir(path.join(testDir, 'src'));
     await fs.mkdir(path.join(testDir, 'docs'));
@@ -66,7 +70,7 @@ describe('Completion System', () => {
     it('should complete branch names for /checkout', async () => {
       const branches = ['main', 'develop', 'feature/new-ui', 'hotfix/bug-123'];
       const completions = await getCompletions('/checkout ', branches);
-      
+
       expect(completions).toContain('/checkout main');
       expect(completions).toContain('/checkout develop');
       expect(completions).toContain('/checkout feature/new-ui');
@@ -76,7 +80,7 @@ describe('Completion System', () => {
     it('should filter branches by prefix', async () => {
       const branches = ['main', 'develop', 'feature/new-ui', 'hotfix/bug-123'];
       const completions = await getCompletions('/checkout fe', branches);
-      
+
       expect(completions).toContain('/checkout feature/new-ui');
       expect(completions).not.toContain('/checkout main');
       expect(completions).not.toContain('/checkout develop');
@@ -85,7 +89,7 @@ describe('Completion System', () => {
     it('should be case-insensitive for branch filtering', async () => {
       const branches = ['Main', 'Develop', 'Feature/new-ui'];
       const completions = await getCompletions('/checkout mai', branches);
-      
+
       expect(completions).toContain('/checkout Main');
     });
   });
@@ -94,14 +98,14 @@ describe('Completion System', () => {
     it('should complete file paths for /save command', async () => {
       const originalCwd = process.cwd();
       process.chdir(testDir);
-      
+
       try {
         const completions = await getCompletions('/save ');
-        
-        expect(completions.some(c => c.includes('test.txt'))).toBe(true);
-        expect(completions.some(c => c.includes('test2.txt'))).toBe(true);
-        expect(completions.some(c => c.includes('src/'))).toBe(true);
-        expect(completions.some(c => c.includes('docs/'))).toBe(true);
+
+        expect(completions.some((c) => c.includes('test.txt'))).toBe(true);
+        expect(completions.some((c) => c.includes('test2.txt'))).toBe(true);
+        expect(completions.some((c) => c.includes('src/'))).toBe(true);
+        expect(completions.some((c) => c.includes('docs/'))).toBe(true);
       } finally {
         process.chdir(originalCwd);
       }
@@ -110,11 +114,11 @@ describe('Completion System', () => {
     it('should complete directory contents', async () => {
       const originalCwd = process.cwd();
       process.chdir(testDir);
-      
+
       try {
         const completions = await getCompletions('/save src/');
-        
-        expect(completions.some(c => c.includes('src/index.ts'))).toBe(true);
+
+        expect(completions.some((c) => c.includes('src/index.ts'))).toBe(true);
       } finally {
         process.chdir(originalCwd);
       }
@@ -123,13 +127,13 @@ describe('Completion System', () => {
     it('should filter files by prefix', async () => {
       const originalCwd = process.cwd();
       process.chdir(testDir);
-      
+
       try {
         const completions = await getCompletions('/save test');
-        
-        expect(completions.some(c => c.includes('test.txt'))).toBe(true);
-        expect(completions.some(c => c.includes('test2.txt'))).toBe(true);
-        expect(completions.some(c => c.includes('README.md'))).toBe(false);
+
+        expect(completions.some((c) => c.includes('test.txt'))).toBe(true);
+        expect(completions.some((c) => c.includes('test2.txt'))).toBe(true);
+        expect(completions.some((c) => c.includes('README.md'))).toBe(false);
       } finally {
         process.chdir(originalCwd);
       }
@@ -138,11 +142,11 @@ describe('Completion System', () => {
     it('should work with /load command', async () => {
       const originalCwd = process.cwd();
       process.chdir(testDir);
-      
+
       try {
         const completions = await getCompletions('/load ');
-        
-        expect(completions.some(c => c.includes('test.txt'))).toBe(true);
+
+        expect(completions.some((c) => c.includes('test.txt'))).toBe(true);
       } finally {
         process.chdir(originalCwd);
       }
@@ -219,7 +223,7 @@ describe('Completion System', () => {
       // This is more of a documentation test
       const originalCwd = process.cwd();
       process.chdir(testDir);
-      
+
       try {
         const completions = await getCompletions('/save ');
         expect(completions.length).toBeLessThanOrEqual(50);

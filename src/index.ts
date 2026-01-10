@@ -256,15 +256,11 @@ program
                     : warning.reason === 'line-length'
                       ? '📏'
                       : '⚠️ ';
-            console.log(
-              chalk.yellow(`  ${reasonEmoji} ${warning.file}`),
-            );
+            console.log(chalk.yellow(`  ${reasonEmoji} ${warning.file}`));
             console.log(chalk.dim(`     ${warning.details}`));
           }
           if (stats.warnings.length > 10) {
-            console.log(
-              chalk.dim(`  ... and ${stats.warnings.length - 10} more`),
-            );
+            console.log(chalk.dim(`  ... and ${stats.warnings.length - 10} more`));
           }
         }
 
@@ -354,12 +350,12 @@ program
           // Clear ONLY current project index (safe default)
           await clearProjectIndex(projectPath);
           console.log(chalk.green('✓ Index cleared for current project.'));
-          console.log(chalk.dim('Tip: Use "cadre index clear --all" to clear all project indexes.'));
+          console.log(
+            chalk.dim('Tip: Use "cadre index clear --all" to clear all project indexes.'),
+          );
         }
       } else {
-        console.log(
-          chalk.yellow('Usage: cadre index [build|update|stats|list|clear [--all]]'),
-        );
+        console.log(chalk.yellow('Usage: cadre index [build|update|stats|list|clear [--all]]'));
       }
     } catch (error) {
       const err = error as Error;
