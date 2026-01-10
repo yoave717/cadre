@@ -87,7 +87,14 @@ describe('IndexManager', () => {
       expect(stats.languages).toEqual({ TypeScript: 1 });
       expect(stats.duration).toBeGreaterThanOrEqual(0);
 
-      expect(fileIndexer.indexDirectory).toHaveBeenCalledWith(projectRoot, projectRoot);
+      expect(fileIndexer.indexDirectory).toHaveBeenCalledWith(
+        projectRoot,
+        projectRoot,
+        10,
+        0,
+        undefined,
+        expect.any(Object),
+      );
       expect(storage.saveIndex).toHaveBeenCalled();
     });
 
