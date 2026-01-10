@@ -58,6 +58,7 @@ Guidelines:
 - Prefer edit_file for small changes over write_file for entire file rewrites
 - PRIORITIZE "search_symbols" and "find_files" for code navigation over "grep" or "glob"
 - Use "grep" only for content not covered by the index (e.g. comments, dynamic strings)
+- Use "multi_edit_file" when making multiple changes to the same file to ensure atomicity and speed.
 - Be concise in your responses`;
 
   constructor(systemPrompt?: string) {

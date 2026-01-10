@@ -3,30 +3,125 @@ import path from 'path';
 import { getPermissionManager } from '../permissions/index.js';
 import { hasBeenRead } from './files.js';
 
+interface EditOptions {
+  oldString: string;
+  newString: string;
+  replaceAll?: boolean;
+  startLine?: number;
+  endLine?: number;
+}
+
+/**
+ * Helper to apply a single edit to content.
+ * Throws error if edit fails (string not found, ambiguous, etc.)
+ */
+const applyEdit = (content: string, options: EditOptions): { content: string; count: number } => {
+  const { oldString, newString, replaceAll = false, startLine, endLine } = options;
+
+  // If no range specified, use global logic
+  if (!startLine && !endLine) {
+    if (!content.includes(oldString)) {
+      throw new Error(
+        `String to replace not found.\nSearched for:\n${oldString.slice(0, 200)}${oldString.length > 200 ? '...' : ''}`,
+      );
+    }
+
+    if (!replaceAll) {
+      const occurrences = content.split(oldString).length - 1;
+      if (occurrences > 1) {
+        throw new Error(
+          `String to replace appears ${occurrences} times. ` +
+            `Provide more context or set replaceAll=true.`,
+        );
+      }
+    }
+
+    const newContent = replaceAll
+      ? content.split(oldString).join(newString)
+      : content.replace(oldString, newString);
+
+    const count = replaceAll ? content.split(oldString).length - 1 : 1;
+    return { content: newContent, count };
+  }
+
+  // Scoped replacement
+  const lines = content.split('\n');
+  const start = (startLine || 1) - 1;
+  const end = endLine || lines.length;
+
+  if (start < 0 || end > lines.length || start >= end) {
+    throw new Error(`Invalid line range ${start + 1}-${end}. File has ${lines.length} lines.`);
+  }
+
+  const preSection = lines.slice(0, start);
+  const targetSection = lines.slice(start, end);
+  const postSection = lines.slice(end);
+
+  const targetContent = targetSection.join('\n');
+
+  if (!targetContent.includes(oldString)) {
+    throw new Error(`String to replace not found in lines ${start + 1}-${end}.`);
+  }
+
+  if (!replaceAll) {
+    const occurrences = targetContent.split(oldString).length - 1;
+    if (occurrences > 1) {
+      throw new Error(
+        `String to replace appears ${occurrences} times in lines ${start + 1}-${end}. ` +
+          `Provide more context or set replaceAll=true.`,
+      );
+    }
+  }
+
+  const newTargetContent = replaceAll
+    ? targetContent.split(oldString).join(newString)
+    : targetContent.replace(oldString, newString);
+
+  const newFileContent = [...preSection, newTargetContent, ...postSection].join('\n');
+  const count = replaceAll ? targetContent.split(oldString).length - 1 : 1;
+
+  return { content: newFileContent, count };
+};
+
 /**
  * Edit a file by replacing a specific string with another.
- * The old_string must be unique in the file to prevent ambiguous edits.
  */
 export const editFile = async (
   filePath: string,
   oldString: string,
   newString: string,
   replaceAll: boolean = false,
+  startLine?: number,
+  endLine?: number,
+  requester?: string,
+): Promise<string> => {
+  return multiEditFile(
+    filePath,
+    [{ oldString, newString, replaceAll, startLine, endLine }],
+    requester,
+  );
+};
+
+/**
+ * Perform multiple edits on a file sequentially.
+ * Atomic: If one edit fails, none are applied.
+ */
+export const multiEditFile = async (
+  filePath: string,
+  edits: EditOptions[],
   requester?: string,
 ): Promise<string> => {
   const absolutePath = path.resolve(filePath);
 
-  // Check if file was read first
   if (!hasBeenRead(absolutePath)) {
     return `Error: Cannot edit ${filePath} - file was not read first. Please read the file before editing.`;
   }
 
-  // Get permission
   const permissionManager = getPermissionManager();
   const hasPermission = await permissionManager.checkAndRequest(
     path.dirname(absolutePath),
     'edit',
-    `edit file: ${filePath}`,
+    `edit file: ${filePath} (${edits.length} change${edits.length === 1 ? '' : 's'})`,
     requester,
   );
 
@@ -35,44 +130,25 @@ export const editFile = async (
   }
 
   try {
-    const content = await fs.readFile(absolutePath, 'utf-8');
+    let content = await fs.readFile(absolutePath, 'utf-8');
+    let totalCount = 0;
 
-    // Check if old_string exists
-    if (!content.includes(oldString)) {
-      return `Error: The string to replace was not found in ${filePath}.\nSearched for:\n${oldString.slice(0, 200)}${oldString.length > 200 ? '...' : ''}`;
-    }
-
-    // Check for uniqueness if not replacing all
-    if (!replaceAll) {
-      const occurrences = content.split(oldString).length - 1;
-      if (occurrences > 1) {
-        return (
-          `Error: The string to replace appears ${occurrences} times in ${filePath}. ` +
-          `Either provide more context to make it unique, or set replaceAll=true to replace all occurrences.`
-        );
+    for (let i = 0; i < edits.length; i++) {
+      try {
+        const result = applyEdit(content, edits[i]);
+        content = result.content;
+        totalCount += result.count;
+      } catch (e) {
+        const err = e as Error;
+        return `Error applying edit #${i + 1}: ${err.message}\nNo changes were saved to the file.`;
       }
     }
 
-    // Perform the replacement
-    let newContent: string;
-    let replacementCount: number;
-
-    if (replaceAll) {
-      const parts = content.split(oldString);
-      replacementCount = parts.length - 1;
-      newContent = parts.join(newString);
-    } else {
-      newContent = content.replace(oldString, newString);
-      replacementCount = 1;
-    }
-
-    // Write the file
-    await fs.writeFile(absolutePath, newContent, 'utf-8');
-
-    return `Successfully edited ${filePath}: replaced ${replacementCount} occurrence(s).`;
+    await fs.writeFile(absolutePath, content, 'utf-8');
+    return `Successfully applied ${edits.length} edit(s) to ${filePath} (total ${totalCount} replacements).`;
   } catch (error) {
     const err = error as Error;
-    return `Error editing file: ${err.message}`;
+    return `Error processing file: ${err.message}`;
   }
 };
 

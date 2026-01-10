@@ -59,17 +59,26 @@ export class TaskDecomposer {
         messages: [
           {
             role: 'system',
-            content: DECOMPOSITION_PROMPT.replace('{REQUEST}', userRequest),
+            content: DECOMPOSITION_PROMPT.replace('User request: {REQUEST}', ''),
+          },
+          {
+            role: 'user',
+            content: `User request: ${userRequest}`,
           },
         ],
         temperature: 0.3, // Lower temperature for more consistent planning
-        response_format: { type: 'json_object' },
       });
 
-      const content = response.choices[0]?.message?.content;
+      let content = response.choices[0]?.message?.content;
       if (!content) {
         throw new Error('No response from LLM');
       }
+
+      // Strip markdown code fences if present
+      content = content
+        .replace(/^```json\n/, '')
+        .replace(/^```\n/, '')
+        .replace(/\n```$/, '');
 
       const plan = JSON.parse(content) as TaskPlan;
 
