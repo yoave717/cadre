@@ -5,11 +5,22 @@ import * as files from '../../src/tools/files';
 
 // Mock fs and permissions
 vi.mock('fs/promises');
+vi.mock('fs', async () => {
+  const actual = await vi.importActual('fs');
+  return {
+    ...actual,
+    createReadStream: vi.fn(),
+  };
+});
 vi.mock('../../src/permissions/index.js', () => ({
   getPermissionManager: () => ({
     checkAndRequest: vi.fn().mockResolvedValue(true),
   }),
 }));
+
+// Import non-promise fs to access the mock
+import * as fsLegacy from 'fs';
+import { Readable } from 'stream';
 
 describe('File Tools', () => {
   beforeEach(() => {
@@ -38,13 +49,24 @@ describe('File Tools', () => {
       expect(result).toContain('Error reading file');
     });
 
-    it('should support offset and limit', async () => {
+    it('should support offset and limit using streams', async () => {
       const lines = ['line1', 'line2', 'line3', 'line4'];
-      (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(lines.join('\n'));
+      const filePath = 'test.txt';
+
+      // Mock createReadStream
+      const mockStream = Readable.from(lines.join('\n'));
+      // @ts-ignore
+      mockStream.destroy = vi.fn();
+      (fsLegacy.createReadStream as unknown as ReturnType<typeof vi.fn>).mockReturnValue(
+        mockStream,
+      );
 
       // Offset 1 (start at line2), limit 2 (take line2, line3)
-      const result = await files.readFile('test.txt', 1, 2);
+      const result = await files.readFile(filePath, 1, 2);
 
+      expect(fsLegacy.createReadStream).toHaveBeenCalledWith(path.resolve(filePath), {
+        encoding: 'utf-8',
+      });
       expect(result).toContain('line2');
       expect(result).toContain('line3');
       expect(result).not.toContain('line1');

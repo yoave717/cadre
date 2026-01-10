@@ -30,47 +30,71 @@ export const readFile = async (
 ): Promise<string> => {
   try {
     const absolutePath = path.resolve(filePath);
-    const content = await fs.readFile(absolutePath, 'utf-8');
 
     // Track that this file was read
     readFiles.add(absolutePath);
 
-    // Handle offset and limit for large files
-    if (offset !== undefined || limit !== undefined) {
+    // If no offset/limit, use fast path (standard readFile)
+    if (offset === undefined && limit === undefined) {
+      const content = await fs.readFile(absolutePath, 'utf-8');
       const lines = content.split('\n');
-      const startLine = offset || 0;
-      const numLines = limit || lines.length;
-      const selectedLines = lines.slice(startLine, startLine + numLines);
 
-      // Add line numbers
-      const numbered = selectedLines.map(
-        (line, i) => `${String(startLine + i + 1).padStart(4)}│ ${line}`,
-      );
+      // Truncate if too large (default safety)
+      if (lines.length > 2000) {
+        const numbered = lines
+          .slice(0, 2000)
+          .map((line, i) => `${String(i + 1).padStart(4)}│ ${line}`);
+        return `${numbered.join('\n')}\n... (truncated, ${lines.length - 2000} more lines. Use offset/limit to read more)`;
+      }
 
+      const numbered = lines.map((line, i) => `${String(i + 1).padStart(4)}│ ${line}`);
       return numbered.join('\n');
     }
 
-    // For full file, add line numbers
-    const lines = content.split('\n');
-    const numbered = lines.map((line, i) => `${String(i + 1).padStart(4)}│ ${line}`);
+    // Streaming path for partial reads
+    const fileStream = (await import('fs')).createReadStream(absolutePath, { encoding: 'utf-8' });
+    const rl = (await import('readline')).createInterface({
+      input: fileStream,
+      crlfDelay: Infinity,
+    });
 
-    // Truncate if too large
-    if (numbered.length > 2000) {
-      return `${numbered
-        .slice(0, 2000)
-        .join(
-          '\n',
-        )}\n... (truncated, ${lines.length - 2000} more lines. Use offset/limit to read more)`;
+    const lines: string[] = [];
+    let lineCount = 0;
+    const startLine = offset || 0;
+    const endLine = startLine + (limit || Number.MAX_SAFE_INTEGER);
+
+    for await (const line of rl) {
+      if (lineCount >= startLine) {
+        lines.push(`${String(lineCount + 1).padStart(4)}│ ${line}`);
+      }
+
+      lineCount++;
+
+      if (lineCount >= endLine) {
+        break;
+      }
     }
 
-    return numbered.join('\n');
+    // Clean up
+    rl.close();
+    fileStream.destroy();
+
+    if (lines.length === 0 && lineCount > 0) {
+      return `File has ${lineCount} lines. Requested range ${startLine}-${endLine} is out of bounds.`;
+    }
+
+    return lines.join('\n');
   } catch (error) {
     const err = error as Error;
     return `Error reading file: ${err.message}`;
   }
 };
 
-export const writeFile = async (filePath: string, content: string): Promise<string> => {
+export const writeFile = async (
+  filePath: string,
+  content: string,
+  requester?: string,
+): Promise<string> => {
   const absolutePath = path.resolve(filePath);
 
   // Check if file was read first (safety measure)
@@ -88,6 +112,7 @@ export const writeFile = async (filePath: string, content: string): Promise<stri
     path.dirname(absolutePath),
     'write',
     `write file: ${filePath}`,
+    requester,
   );
 
   if (!hasPermission) {

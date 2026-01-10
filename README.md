@@ -4,6 +4,7 @@ Cadre is a Claude Code-like AI Coding Assistant CLI that provides an intelligent
 
 ## Features
 
+- **Multi-Worker Parallel Execution** - Execute complex tasks with multiple AI agents running in parallel
 - **Interactive Agent Loop** - Natural conversation with your codebase
 - **Streaming Responses** - Real-time token streaming
 - **Full Tool Suite** - Read, write, edit files, run commands, glob, grep
@@ -11,7 +12,7 @@ Cadre is a Claude Code-like AI Coding Assistant CLI that provides an intelligent
 - **Git Workflow Integration** - Automatic branch creation and PR/MR creation for GitHub & GitLab
 - **Automatic PR Descriptions** - Auto-generates PR descriptions from commits and changes
 - **Context Compression** - Automatic summarization for long conversations
-- **Permission System** - Per-project permissions with "remember" option
+- **Permission System** - Per-project permissions with queued prompts for multi-worker safety
 - **Multi-model Support** - OpenAI, vLLM, Together, Qwen, and other OpenAI-compatible APIs
 - **Conversation Branching** - Create named branches to experiment with multiple solutions
 - **Cross-platform** - Works on Mac, Linux, and Windows
@@ -107,14 +108,159 @@ cadre --model gpt-4-turbo "review this code"
 
 ## Interactive Commands
 
-| Command   | Description                   |
-| --------- | ----------------------------- |
-| `/help`   | Show available commands       |
-| `/branch` | Manage conversation branches  |
-| `/clear`  | Clear conversation history    |
-| `/stats`  | Show context/token statistics |
-| `/config` | Show current configuration    |
-| `/exit`   | Exit the session              |
+| Command        | Description                                  |
+| -------------- | -------------------------------------------- |
+| `/help`        | Show available commands                      |
+| `/parallel`    | Execute task with multiple workers           |
+| `/workers`     | Show worker pool status                      |
+| `/branch`      | Manage conversation branches                 |
+| `/clear`       | Clear conversation history                   |
+| `/stats`       | Show context/token statistics                |
+| `/config`      | Show current configuration                   |
+| `/exit`        | Exit the session                             |
+
+## Multi-Worker Parallel Execution
+
+Cadre can execute complex tasks using multiple AI workers in parallel, dramatically speeding up multi-faceted development work.
+
+### How It Works
+
+When you provide a complex request, Cadre:
+1. **Analyzes** your request using LLM-based task decomposition
+2. **Plans** subtasks that can run in parallel
+3. **Spawns** multiple worker agents (up to 4 by default)
+4. **Executes** independent tasks concurrently
+5. **Aggregates** results and presents them to you
+
+### Auto-Detection
+
+Cadre automatically detects when a task might benefit from parallel execution and prompts you:
+
+```
+You: Refactor the authentication module, update all tests, and fix linting errors
+💡 This task might benefit from parallel execution. Use multi-worker mode? (y/n):
+```
+
+Keywords that trigger auto-detection:
+- "and also", "and then", "multiple", "several"
+- "all files", "update all", "fix all", "refactor"
+- Long requests (>100 chars) with multiple items
+
+### Manual Parallel Execution
+
+Use the `/parallel` command to explicitly use multi-worker mode:
+
+```
+/parallel Refactor authentication module, update tests, and fix linting
+```
+
+### Example Output
+
+```
+🧠 Analyzing request and planning tasks...
+✓ Created plan with 3 subtasks
+  Main goal: Refactor authentication and update tests
+
+📋 Task Plan:
+  Group 1 (2 tasks in parallel):
+    • task-1: Refactor authentication module [medium]
+    • task-2: Update test files [low]
+  Group 2 (1 tasks in parallel):
+    • task-3: Run linter and fix errors [low] [depends on: task-1, task-2]
+
+⚡ Executing parallel group 1/2
+  Tasks: 2
+  → worker-1: Starting task-1
+    "Refactor authentication module"
+  → worker-2: Starting task-2
+    "Update test files"
+  ✓ worker-1: Completed task-1 in 45.2s, 12 tool calls
+  ✓ worker-2: Completed task-2 in 38.1s, 8 tool calls
+  ✓ Group complete: 2 succeeded, 0 failed
+
+⚡ Executing parallel group 2/2
+  Tasks: 1
+  → worker-1: Starting task-3
+    "Run linter and fix errors"
+  ✓ worker-1: Completed task-3 in 15.3s, 5 tool calls
+  ✓ Group complete: 1 succeeded, 0 failed
+
+✓ Completed in 60.5s: 3 succeeded, 0 failed
+```
+
+### Worker Status
+
+Check the status of your worker pool:
+
+```
+/workers
+```
+
+Output:
+```
+👷 Worker Pool Status:
+
+  Total Workers:     2
+  Idle:              2
+  Busy:              0
+  Error:             0
+  Stopped:           0
+  Tasks Completed:   3
+  Total Errors:      0
+```
+
+### Permission Handling
+
+Workers prompt for permissions as needed. When a worker needs permission:
+
+```
+⚠ Permission required
+  Project: cadre
+  Path:    /home/user/cadre
+  Action:  write file: src/auth.ts
+  Requester: worker-1
+
+Allow write operations for worker-1 in cadre?
+  ▸ Yes, just this once
+    Yes, always for this project (remember)
+    No, deny
+```
+
+**Key Features:**
+- **Queued Prompts**: Only one permission dialog at a time (no conflicts)
+- **Shared Permissions**: Once granted, all workers benefit
+- **Worker Attribution**: You always know which worker is asking
+
+### Configuration
+
+Configure the worker pool (in `.env` or via environment):
+
+```env
+# Maximum concurrent workers (default: 4)
+MAX_WORKERS=4
+
+# Worker timeout in milliseconds (default: none)
+WORKER_TIMEOUT_MS=300000
+```
+
+### Best Use Cases
+
+Multi-worker execution excels at:
+- **Multi-file refactoring**: Update multiple modules simultaneously
+- **Batch operations**: Fix linting errors across many files
+- **Parallel testing**: Update tests while modifying code
+- **Documentation**: Generate docs for multiple components
+- **Code review**: Analyze multiple files in parallel
+
+### Single Worker vs Multi-Worker
+
+| Aspect          | Single Worker              | Multi-Worker                    |
+| --------------- | -------------------------- | ------------------------------- |
+| Simple tasks    | ✅ Faster (no overhead)    | ⚠️ Slower (planning overhead)   |
+| Complex tasks   | ⏳ Sequential execution    | ⚡ Parallel execution           |
+| Dependencies    | ✅ Natural flow            | ✅ Handled via groups           |
+| Permissions     | 📝 One prompt              | 📝 One prompt per worker type   |
+| Resource usage  | 💚 Lower                   | 💛 Higher (multiple API calls)  |
 
 ## Input History & Navigation
 

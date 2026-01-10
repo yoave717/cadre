@@ -102,8 +102,52 @@ export const TOOLS: ChatCompletionTool[] = [
             type: 'boolean',
             description: 'If true, replace all occurrences. Default is false (must be unique).',
           },
+          start_line: {
+            type: 'number',
+            description: 'Optional start line (1-indexed) to restrict editing scope.',
+          },
+          end_line: {
+            type: 'number',
+            description: 'Optional end line (1-indexed) to restrict editing scope.',
+          },
         },
         required: ['path', 'old_string', 'new_string'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'multi_edit_file',
+      description:
+        'Perform multiple edits to a single file in one go. Edits are applied sequentially, so effectively atomic. If one fails, none are saved.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'The path of the file to edit',
+          },
+          edits: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                old_string: { type: 'string', description: 'String to replace' },
+                new_string: { type: 'string', description: 'Replacement string' },
+                replace_all: {
+                  type: 'boolean',
+                  description: 'Replace all occurrences (default false)',
+                },
+                start_line: { type: 'number', description: 'Optional start line (1-indexed)' },
+                end_line: { type: 'number', description: 'Optional end line (1-indexed)' },
+              },
+              required: ['old_string', 'new_string'],
+            },
+            description: 'List of edits to apply',
+          },
+        },
+        required: ['path', 'edits'],
       },
     },
   },
@@ -685,8 +729,11 @@ export const TOOLS: ChatCompletionTool[] = [
   },
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const handleToolCall = async (name: string, args: any): Promise<string> => {
+export const handleToolCall = async (
+  name: string,
+  args: any,
+  executionContext?: string,
+): Promise<string> => {
   switch (name) {
     // File operations
     case 'list_files':
@@ -694,9 +741,29 @@ export const handleToolCall = async (name: string, args: any): Promise<string> =
     case 'read_file':
       return fileTools.readFile(args.path, args.offset, args.limit);
     case 'write_file':
-      return fileTools.writeFile(args.path, args.content);
+      return fileTools.writeFile(args.path, args.content, executionContext);
     case 'edit_file':
-      return editTools.editFile(args.path, args.old_string, args.new_string, args.replace_all);
+      return editTools.editFile(
+        args.path,
+        args.old_string,
+        args.new_string,
+        args.replace_all,
+        args.start_line,
+        args.end_line,
+        executionContext,
+      );
+    case 'multi_edit_file':
+      return editTools.multiEditFile(
+        args.path,
+        args.edits.map((e: any) => ({
+          oldString: e.old_string,
+          newString: e.new_string,
+          replaceAll: e.replace_all,
+          startLine: e.start_line,
+          endLine: e.end_line,
+        })),
+        executionContext,
+      );
     case 'create_directory':
       return fileTools.createDirectory(args.path);
 
@@ -714,7 +781,7 @@ export const handleToolCall = async (name: string, args: any): Promise<string> =
 
     // Shell operations
     case 'run_command':
-      return runTools.runCommand(args.command, args.cwd);
+      return runTools.runCommand(args.command, args.cwd, executionContext);
 
     // Index operations
     case 'build_index':

@@ -38,19 +38,26 @@ export class Agent {
 
   private contextManager: ContextManager;
 
+  /**
+   * Execution context (e.g., worker ID) for this agent.
+   * Used to identify the requester in permission prompts.
+   */
+  private executionContext?: string;
+
   private systemPrompt: string = `You are Cadre, a helpful AI coding assistant running in a CLI environment.
 
 You have access to the file system and can run commands. Your capabilities include:
 - Reading and writing files
 - Running shell commands
-- Searching code with glob patterns and grep
+- Searching code with index-based tools (search_symbols, find_files) or glob/grep
 - Making surgical edits to files
 
 Guidelines:
 - Always read files before modifying them
 - Use run_command only when necessary and be cautious with destructive commands
 - Prefer edit_file for small changes over write_file for entire file rewrites
-- When searching code, use glob for file patterns and grep for content search
+- PRIORITIZE "search_symbols" and "find_files" for code navigation over "grep" or "glob"
+- Use "grep" only for content not covered by the index (e.g. comments, dynamic strings)
 - Be concise in your responses`;
 
   constructor(systemPrompt?: string) {
@@ -91,6 +98,21 @@ Guidelines:
 
   getSystemPrompt(): string {
     return this.systemPrompt;
+  }
+
+  /**
+   * Set the execution context for this agent (e.g., worker ID).
+   * This context is used to identify the requester in permission prompts.
+   */
+  setExecutionContext(context: string | undefined): void {
+    this.executionContext = context;
+  }
+
+  /**
+   * Get the execution context for this agent.
+   */
+  getExecutionContext(): string | undefined {
+    return this.executionContext;
   }
 
   async *chat(userInput: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
@@ -237,7 +259,7 @@ Guidelines:
               return {
                 toolCall,
                 args,
-                result: await handleToolCall(toolCall.name, args),
+                result: await handleToolCall(toolCall.name, args, this.executionContext),
               };
             }),
           );
