@@ -40,6 +40,8 @@ export interface WorkerPoolConfig {
   maxWorkers: number;
   enableSharedContext: boolean;
   timeoutMs?: number;
+  maxTokensPerMinute?: number; // Rate limit in tokens per minute
+  enableRateLimiting?: boolean; // Enable/disable rate limiting
 }
 
 export interface WorkerMessage {
