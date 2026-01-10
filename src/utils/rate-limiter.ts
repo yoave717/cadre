@@ -21,7 +21,7 @@ export interface RateLimitStatus {
  */
 export class RateLimiter {
   private tokensUsed: number = 0;
-  private windowStart: number = Date.now();
+  private lastUpdate: number; // Track last time we updated the bucket
   private readonly tokensPerMinute: number;
   private readonly windowMs: number = 60000; // 1 minute
   private readonly verbose: boolean;
@@ -36,8 +36,11 @@ export class RateLimiter {
     this.tokensPerMinute = config.tokensPerMinute;
     this.verbose = config.verbose ?? false;
 
+    // Start with bucket full (tokensUsed = 0) and set last update to now
+    this.lastUpdate = Date.now();
+
     if (this.verbose) {
-      console.log(`[RateLimiter] Initialized with ${this.tokensPerMinute} tokens per minute`);
+      console.log(`[RateLimiter] Initialized with ${this.tokensPerMinute} tokens per minute (bucket starts full)`);
     }
   }
 
@@ -57,16 +60,26 @@ export class RateLimiter {
    * Process the waiting queue, granting tokens when available
    */
   private async processQueue(): Promise<void> {
-    if (this.processingQueue) return;
+    if (this.processingQueue) {
+      if (this.verbose) {
+        console.log(`[RateLimiter] processQueue() called but already processing. Queue length: ${this.waitingQueue.length}`);
+      }
+      return;
+    }
     this.processingQueue = true;
+
+    if (this.verbose) {
+      console.log(`[RateLimiter] processQueue() started. Queue length: ${this.waitingQueue.length}`);
+    }
 
     try {
       while (this.waitingQueue.length > 0) {
-        // Reset window if needed
-        this.resetIfNeeded();
-
         const request = this.waitingQueue[0];
         const available = this.getAvailableTokens();
+
+        if (this.verbose) {
+          console.log(`[RateLimiter] Processing request for ${request.tokens} tokens. Available: ${available}, Queue length: ${this.waitingQueue.length}`);
+        }
 
         // If enough tokens available, grant immediately
         // OR if the request is larger than the entire bucket size, grant it if the bucket is full
@@ -85,21 +98,41 @@ export class RateLimiter {
             );
           }
         } else {
-          // Need to wait for next window
-          const waitTime = this.getWaitTime();
+          // Need to wait for tokens to become available
+          const tokensNeeded = request.tokens - available;
+
+          // With continuous refill, calculate time needed for tokensNeeded to be refilled
+          // Token refill rate: tokensPerMinute per windowMs (60000ms)
+          const refillRatePerMs = this.tokensPerMinute / this.windowMs;
+
+          // Time to refill tokensNeeded: tokensNeeded / refillRatePerMs
+          let waitTime = Math.ceil(tokensNeeded / refillRatePerMs);
+
+          // Add a small buffer (100ms) to account for timing precision
+          waitTime = Math.max(100, waitTime + 100);
+
+          // Cap wait time at 2x window size to prevent excessive waits
+          waitTime = Math.min(waitTime, this.windowMs * 2);
 
           if (this.verbose) {
             console.log(
-              `[RateLimiter] Rate limit reached. Waiting ${Math.round(waitTime / 1000)}s for next window.`,
+              `[RateLimiter] Rate limit reached. Need ${tokensNeeded} more tokens. Waiting ${Math.round(waitTime / 1000)}s (refill rate: ${Math.round(refillRatePerMs * 1000)} tokens/sec). Queue length: ${this.waitingQueue.length}`,
             );
           }
 
-          // Wait for the window to reset
+          // Wait for tokens to be refilled
           await new Promise((resolve) => setTimeout(resolve, waitTime));
 
-          // After waiting, reset window and continue
-          this.resetIfNeeded();
+          if (this.verbose) {
+            console.log(`[RateLimiter] Wait completed. Queue length: ${this.waitingQueue.length}`);
+          }
+
+          // After waiting, getAvailableTokens() will automatically account for refill
         }
+      }
+
+      if (this.verbose) {
+        console.log(`[RateLimiter] processQueue() completed. Queue is empty.`);
       }
     } finally {
       this.processingQueue = false;
@@ -126,58 +159,44 @@ export class RateLimiter {
   }
 
   /**
-   * Get the number of tokens available in the current window
+   * Get the number of tokens available, accounting for continuous refill
+   * This also updates the bucket state based on elapsed time
    */
   getAvailableTokens(): number {
-    this.resetIfNeeded();
-    return Math.max(0, this.tokensPerMinute - this.tokensUsed);
-  }
-
-  /**
-   * Get the wait time in milliseconds until the next window
-   */
-  private getWaitTime(): number {
-    const elapsed = Date.now() - this.windowStart;
-    return Math.max(0, this.windowMs - elapsed);
-  }
-
-  /**
-   * Reset the window if a minute has passed
-   */
-  private resetIfNeeded(): void {
     const now = Date.now();
-    const elapsed = now - this.windowStart;
+    const elapsed = now - this.lastUpdate;
 
-    if (elapsed >= this.windowMs) {
-      // Calculate how many windows have passed
-      const windowsPassed = Math.floor(elapsed / this.windowMs);
+    // Calculate tokens refilled since last update
+    // Token refill rate: tokensPerMinute per windowMs
+    const tokensRefilled = (elapsed / this.windowMs) * this.tokensPerMinute;
 
-      // Reduce used tokens by the capacity of the passed windows
-      // This effectively "pays off" the debt over time
-      const tokensToRestore = windowsPassed * this.tokensPerMinute;
-      this.tokensUsed = Math.max(0, this.tokensUsed - tokensToRestore);
+    // Reduce tokens used by refilled amount (continuous refill)
+    this.tokensUsed = Math.max(0, this.tokensUsed - tokensRefilled);
 
-      // Advance window start time
-      this.windowStart += windowsPassed * this.windowMs;
+    // Update last update time
+    this.lastUpdate = now;
 
-      if (this.verbose) {
-        console.log(
-          `[RateLimiter] Window reset (${windowsPassed}x). New usage: ${this.tokensUsed}`,
-        );
-      }
-    }
+    // Available = bucket size - tokens used (capped at bucket size)
+    const available = Math.max(0, this.tokensPerMinute - this.tokensUsed);
+
+    return available;
   }
 
   /**
    * Get current status of the rate limiter
    */
   getStatus(): RateLimitStatus {
-    this.resetIfNeeded();
+    const available = this.getAvailableTokens();
+    // Calculate wait time for next token to become available
+    const tokensNeeded = Math.max(1, this.tokensUsed - this.tokensPerMinute + 1);
+    const refillRatePerMs = this.tokensPerMinute / this.windowMs;
+    const waitTimeMs = tokensNeeded / refillRatePerMs;
+
     return {
-      availableTokens: this.getAvailableTokens(),
+      availableTokens: available,
       tokensPerMinute: this.tokensPerMinute,
-      currentWindowStart: new Date(this.windowStart),
-      waitTimeMs: this.getWaitTime(),
+      currentWindowStart: new Date(this.lastUpdate),
+      waitTimeMs: Math.max(0, waitTimeMs),
     };
   }
 
@@ -185,7 +204,7 @@ export class RateLimiter {
    * Check if a request would exceed the rate limit
    */
   wouldExceedLimit(tokens: number): boolean {
-    this.resetIfNeeded();
-    return this.tokensUsed + tokens > this.tokensPerMinute;
+    const available = this.getAvailableTokens();
+    return available < tokens;
   }
 }
