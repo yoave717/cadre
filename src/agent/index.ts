@@ -4,7 +4,6 @@ import { getConfig } from '../config.js';
 import { TOOLS, handleToolCall } from './tools.js';
 import { ContextManager, getContextManager, estimateConversationTokens } from '../context/index.js';
 import { RateLimiter } from '../utils/rate-limiter.js';
-import { estimateTokens } from '../context/tokenizer.js';
 
 export type AgentEvent =
   | { type: 'text_delta'; content: string } // Streaming text chunk
@@ -54,19 +53,15 @@ export class Agent {
 
   private systemPrompt: string = `You are Cadre, a helpful AI coding assistant running in a CLI environment.
 
-You have access to the file system and can run commands. Your capabilities include:
-- Reading and writing files
-- Running shell commands
-- Searching code with index-based tools (search_symbols, find_files) or glob/grep
-- Making surgical edits to files
+You have access to the file system and can run commands. Act quickly and decisively on simple tasks.
 
 Guidelines:
-- Always read files before modifying them
+- Read files when needed before modifying them
 - Use run_command only when necessary and be cautious with destructive commands
 - Prefer edit_file for small changes over write_file for entire file rewrites
-- PRIORITIZE "search_symbols" and "find_files" for code navigation over "grep" or "glob"
-- Use "grep" only for content not covered by the index (e.g. comments, dynamic strings)
-- Be concise in your responses`;
+- Prefer search_symbols and find_files for code navigation over grep or glob
+- Use grep only for content not covered by the index (e.g. comments, dynamic strings)
+- Be concise and action-oriented - don't over-explain simple operations`;
 
   constructor(systemPrompt?: string, rateLimiter?: RateLimiter) {
     const config = getConfig();
@@ -155,11 +150,15 @@ Guidelines:
           {
             model: config.modelName,
             // Strip timestamps for OpenAI API
-            messages: history.map(({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam),
+            messages: history.map(
+              ({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam,
+            ),
             tools: TOOLS,
             tool_choice: 'auto',
             stream: true,
             stream_options: { include_usage: true },
+            temperature: 0.7, // Lower temperature for more focused, less verbose responses
+            max_tokens: config.maxOutputTokens || 4096, // Limit response length
           },
           { signal },
         );
@@ -216,8 +215,14 @@ Guidelines:
       while (true) {
         // Estimate tokens for this request
         const estimatedInputTokens = estimateConversationTokens(this.history);
-        const estimatedOutputTokens = config.maxOutputTokens || 4000;
-        const estimatedTotalTokens = estimatedInputTokens + estimatedOutputTokens;
+
+        // Optimistic reservation: assume output will be smaller (1000 tokens) to allow parallel execution
+        // The RateLimiter will adjust based on actual usage later ("debt tracking")
+        const optimisticOutputTokens = Math.min(config.maxOutputTokens || 4000, 1000);
+        const estimatedTotalTokens = estimatedInputTokens + optimisticOutputTokens;
+
+        // Note: we still pass the FULL maxOutputTokens to the API to avoid truncation,
+        // we just reserve less from the rate limiter to be optimistic.
 
         // Acquire tokens from rate limiter if available
         if (this.rateLimiter) {

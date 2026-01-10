@@ -24,7 +24,7 @@ export interface ContextConfig {
 const DEFAULT_CONFIG: ContextConfig = {
   maxContextTokens: 128000,
   maxOutputTokens: 16000,
-  compressionThreshold: 0.8,
+  compressionThreshold: 0.9, // Increased from 0.8 to reduce compression frequency
   maxToolResultTokens: 2000,
   summaryTokenBudget: 4000,
 };
@@ -38,6 +38,11 @@ export class ContextManager {
   private rollingSummary: string = '';
 
   private summaryMessageCount: number = 0;
+
+  // Incremental token counting cache (avoids recalculating on every message)
+  private cachedTokenCount: number = 0;
+
+  private cachedMessageCount: number = 0;
 
   constructor(config: Partial<ContextConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -59,9 +64,27 @@ export class ContextManager {
 
   /**
    * Check if context needs compression.
+   * Uses incremental token counting for better performance.
    */
   needsCompression<T extends Message>(messages: T[]): boolean {
-    const currentTokens = estimateConversationTokens(messages);
+    // Use cached token count if message count matches
+    let currentTokens: number;
+    if (messages.length === this.cachedMessageCount && this.cachedTokenCount > 0) {
+      currentTokens = this.cachedTokenCount;
+    } else if (messages.length > this.cachedMessageCount && this.cachedMessageCount > 0) {
+      // Incremental update: only count new messages
+      const newMessages = messages.slice(this.cachedMessageCount);
+      const newTokens = estimateConversationTokens(newMessages);
+      currentTokens = this.cachedTokenCount + newTokens;
+      this.cachedTokenCount = currentTokens;
+      this.cachedMessageCount = messages.length;
+    } else {
+      // Full recalculation needed
+      currentTokens = estimateConversationTokens(messages);
+      this.cachedTokenCount = currentTokens;
+      this.cachedMessageCount = messages.length;
+    }
+
     return currentTokens > this.getCompressionThreshold();
   }
 
@@ -145,6 +168,10 @@ export class ContextManager {
     // Add recent messages
     compressed.push(...recentMessages);
 
+    // Invalidate cache after compression
+    this.cachedTokenCount = 0;
+    this.cachedMessageCount = 0;
+
     return compressed;
   }
 
@@ -175,6 +202,9 @@ export class ContextManager {
   clearSummary(): void {
     this.rollingSummary = '';
     this.summaryMessageCount = 0;
+    // Also clear token cache when summary is cleared
+    this.cachedTokenCount = 0;
+    this.cachedMessageCount = 0;
   }
 
   /**

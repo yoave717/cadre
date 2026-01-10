@@ -191,31 +191,43 @@ export class TaskDecomposer {
   /**
    * Check if a request would benefit from multi-worker execution
    * Returns true if the request is complex enough to warrant decomposition
+   *
+   * IMPORTANT: This should be VERY conservative to avoid unnecessary LLM calls.
+   * Most tasks are better handled by a single agent.
    */
   async shouldDecompose(userRequest: string): Promise<boolean> {
-    // Heuristics for when to use multi-worker:
-    // 1. Request contains "and" or "also" suggesting multiple tasks
-    // 2. Request is long (>100 chars) suggesting complexity
-    // 3. Request mentions multiple files/components
-    // 4. Request uses words like "refactor", "update all", "fix multiple"
-
-    const keywords = [
-      'and also',
-      'and then',
-      'multiple',
-      'several',
-      'all files',
-      'refactor',
-      'update all',
-      'fix all',
-      'implement multiple',
-    ];
+    // Only use multi-worker for CLEARLY parallel tasks
+    // Most single tasks should NOT be decomposed (adds 1-3s latency)
 
     const requestLower = userRequest.toLowerCase();
-    const hasKeywords = keywords.some((kw) => requestLower.includes(kw));
-    const isLong = userRequest.length > 100;
-    const hasMultipleItems = (userRequest.match(/,/g) || []).length >= 2;
 
-    return hasKeywords || hasMultipleItems || isLong;
+    // Strong indicators of parallel work (must have at least 2)
+    const parallelKeywords = [
+      'and also',
+      'and then',
+      'multiple files',
+      'several files',
+      'all files',
+      'update all',
+      'fix all',
+      'refactor all',
+      'implement multiple',
+      'create multiple',
+    ];
+
+    // Count how many parallel indicators are present
+    let parallelIndicators = 0;
+    for (const keyword of parallelKeywords) {
+      if (requestLower.includes(keyword)) {
+        parallelIndicators += 1;
+      }
+    }
+
+    // Check for comma-separated lists (strong indicator of multiple items)
+    const hasMultipleItems = (userRequest.match(/,/g) || []).length >= 2; // Increased threshold
+
+    // Only decompose if we have strong evidence of parallel work
+    // Require BOTH multiple indicators OR a clear list
+    return parallelIndicators >= 1 || hasMultipleItems;
   }
 }
