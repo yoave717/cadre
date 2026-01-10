@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import { SessionManager } from '../../src/context/session-manager';
 
-const TEST_DIR = '.ai/test-session';
+const TEST_DIR = '.cadre/test-session';
 
 describe('SessionManager', () => {
   let manager: SessionManager;

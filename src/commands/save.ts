@@ -17,7 +17,7 @@ export async function saveConversation(agent: Agent, filename?: string): Promise
   // Determine save directory
   let saveDir = config.saveDirectory;
   if (!saveDir) {
-    saveDir = path.join(os.homedir(), '.ai', 'conversations');
+    saveDir = path.join(os.homedir(), '.cadre', 'conversations');
   } else if (saveDir.startsWith('~')) {
     saveDir = path.join(os.homedir(), saveDir.slice(1));
   }

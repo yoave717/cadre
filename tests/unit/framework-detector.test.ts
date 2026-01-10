@@ -25,7 +25,7 @@ describe('FrameworkDetector', () => {
       (fs.readFile as any).mockImplementation((filePath: string) => {
         if (filePath.endsWith('package.json'))
           return Promise.resolve(JSON.stringify(mockPackageJson));
-        if (filePath.includes('.ai/framework-cache.json'))
+        if (filePath.includes('.cadre/framework-cache.json'))
           return Promise.reject(new Error('No cache'));
         return Promise.reject(new Error('File not found'));
       });
@@ -59,7 +59,7 @@ describe('FrameworkDetector', () => {
       (fs.readFile as any).mockImplementation((filePath: string) => {
         if (filePath.endsWith('requirements.txt'))
           return Promise.resolve('django==4.0.0\npytest==7.0.0');
-        if (filePath.includes('.ai/framework-cache.json'))
+        if (filePath.includes('.cadre/framework-cache.json'))
           return Promise.reject(new Error('No cache'));
         return Promise.reject(new Error('File not found'));
       });
@@ -80,7 +80,7 @@ describe('FrameworkDetector', () => {
           return Promise.resolve(
             '<dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot</artifactId></dependency>',
           );
-        if (filePath.includes('.ai/framework-cache.json'))
+        if (filePath.includes('.cadre/framework-cache.json'))
           return Promise.reject(new Error('No cache'));
         return Promise.reject(new Error('File not found'));
       });
@@ -98,7 +98,7 @@ describe('FrameworkDetector', () => {
       (fs.readFile as any).mockImplementation((filePath: string) => {
         if (filePath.endsWith('go.mod'))
           return Promise.resolve('require github.com/gin-gonic/gin v1.7.0');
-        if (filePath.includes('.ai/framework-cache.json'))
+        if (filePath.includes('.cadre/framework-cache.json'))
           return Promise.reject(new Error('No cache'));
         return Promise.reject(new Error('File not found'));
       });

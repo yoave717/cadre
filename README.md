@@ -139,7 +139,7 @@ Press `Ctrl+R` to enter reverse-i-search mode:
 
 ### History Persistence
 
-- History is automatically saved to `~/.ai/history`
+- History is automatically saved to `~/.cadre/history`
 - Persists across sessions
 - Maximum 1000 entries (oldest automatically removed)
 - Empty commands and consecutive duplicates are ignored

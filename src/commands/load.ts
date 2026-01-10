@@ -149,7 +149,7 @@ export async function loadConversation(agent: Agent, filepath: string): Promise<
   if (!filepath.includes('/') && !filepath.includes('\\')) {
     let saveDir = config.saveDirectory;
     if (!saveDir) {
-      saveDir = path.join(os.homedir(), '.ai', 'conversations');
+      saveDir = path.join(os.homedir(), '.cadre', 'conversations');
     } else if (saveDir.startsWith('~')) {
       saveDir = path.join(os.homedir(), saveDir.slice(1));
     }
@@ -198,7 +198,7 @@ export function listConversations(): string[] {
   let saveDir = config.saveDirectory;
 
   if (!saveDir) {
-    saveDir = path.join(os.homedir(), '.ai', 'conversations');
+    saveDir = path.join(os.homedir(), '.cadre', 'conversations');
   } else if (saveDir.startsWith('~')) {
     saveDir = path.join(os.homedir(), saveDir.slice(1));
   }

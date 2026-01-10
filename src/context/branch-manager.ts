@@ -17,12 +17,12 @@ export interface BranchData {
 
 /**
  * Manages conversation branches.
- * Stores branches in .ai/branches/<name>.json
+ * Stores branches in .cadre/branches/<name>.json
  */
 export class BranchManager {
   private baseDir: string;
 
-  constructor(baseDir: string = '.ai/branches') {
+  constructor(baseDir: string = '.cadre/branches') {
     this.baseDir = path.resolve(process.cwd(), baseDir);
   }
 

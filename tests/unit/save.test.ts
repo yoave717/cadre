@@ -57,7 +57,7 @@ describe('SaveCommand', () => {
     const filePath = callArgs[0] as string;
 
     expect(filePath).toMatch(
-      /\/home\/user\/.ai\/conversations\/conversation_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}.*\.md/,
+      /\/home\/user\/.cadre\/conversations\/conversation_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}.*\.md/,
     );
   });
 
@@ -69,7 +69,7 @@ describe('SaveCommand', () => {
     expect(fs.writeFileSync).toHaveBeenCalled();
     const filePath = vi.mocked(fs.writeFileSync).mock.calls[0][0] as string;
 
-    expect(filePath).toBe('/home/user/.ai/conversations/custom-chat.md');
+    expect(filePath).toBe('/home/user/.cadre/conversations/custom-chat.md');
   });
 
   it('should respect configured save directory', async () => {
@@ -112,7 +112,9 @@ describe('SaveCommand', () => {
 
     await saveConversation(mockAgent);
 
-    expect(fs.mkdirSync).toHaveBeenCalledWith('/home/user/.ai/conversations', { recursive: true });
+    expect(fs.mkdirSync).toHaveBeenCalledWith('/home/user/.cadre/conversations', {
+      recursive: true,
+    });
   });
 
   it('should format content correctly', async () => {

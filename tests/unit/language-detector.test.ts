@@ -110,7 +110,7 @@ describe('LanguageDetector', () => {
     };
 
     vi.mocked(fs.readFile).mockImplementation(async (p) => {
-      if (typeof p === 'string' && p.endsWith('.ai/cache.json')) {
+      if (typeof p === 'string' && p.endsWith('.cadre/cache.json')) {
         return JSON.stringify(mockResult);
       }
       throw new Error('No file');

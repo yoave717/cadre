@@ -7,12 +7,12 @@ export interface SessionData {
 
 /**
  * Manages session state across restarts.
- * Stores session data in .ai/session.json
+ * Stores session data in .cadre/session.json
  */
 export class SessionManager {
   private sessionPath: string;
 
-  constructor(baseDir: string = '.ai') {
+  constructor(baseDir: string = '.cadre') {
     this.sessionPath = path.resolve(process.cwd(), baseDir, 'session.json');
   }
 

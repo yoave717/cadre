@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import { BranchManager } from '../../src/context/branch-manager';
 
-const TEST_DIR = '.ai/test-branches';
+const TEST_DIR = '.cadre/test-branches';
 
 describe('BranchManager', () => {
   let manager: BranchManager;

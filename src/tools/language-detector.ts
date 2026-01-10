@@ -67,7 +67,7 @@ const DEFAULT_IGNORE = [
   '.next',
   '.nuxt',
   '.cache',
-  '.ai',
+  '.cadre',
   'vendor',
   'target',
   'bin',
@@ -76,7 +76,7 @@ const DEFAULT_IGNORE = [
 ];
 
 export class LanguageDetector {
-  private cacheFile = '.ai/cache.json';
+  private cacheFile = '.cadre/cache.json';
   private cacheDuration = 3600000; // 1 hour
 
   private async loadGitIgnore(cwd: string): Promise<string[]> {

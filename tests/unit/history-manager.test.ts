@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-const HISTORY_DIR = path.join(os.homedir(), '.ai');
+const HISTORY_DIR = path.join(os.homedir(), '.cadre');
 const HISTORY_FILE = path.join(HISTORY_DIR, 'history');
 
 describe('HistoryManager', () => {

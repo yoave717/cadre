@@ -18,7 +18,7 @@ const DEFAULT_IGNORE = [
   '.next',
   '.nuxt',
   '.cache',
-  '.ai',
+  '.cadre',
   'vendor',
   'target',
   'bin',

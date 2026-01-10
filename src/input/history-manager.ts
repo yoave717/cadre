@@ -4,7 +4,7 @@ import path from 'path';
 import os from 'os';
 
 const MAX_HISTORY_ENTRIES = 1000;
-const HISTORY_DIR = path.join(os.homedir(), '.ai');
+const HISTORY_DIR = path.join(os.homedir(), '.cadre');
 const HISTORY_FILE = path.join(HISTORY_DIR, 'history');
 
 export class HistoryManager {

@@ -229,7 +229,7 @@ const SIGNATURES: Signature[] = [
 ];
 
 export class FrameworkDetector {
-  private cacheFile = '.ai/framework-cache.json';
+  private cacheFile = '.cadre/framework-cache.json';
   private cacheDuration = 3600000; // 1 hour
 
   async detect(cwd: string = process.cwd()): Promise<DetectionResult> {
