@@ -7,6 +7,7 @@ import * as grepTools from '../tools/grep.js';
 import * as indexTools from '../tools/index.js';
 import * as gitTools from '../tools/git.js';
 import * as gitflowTools from '../tools/gitflow.js';
+import * as prTools from '../tools/pr.js';
 
 export const TOOLS: ChatCompletionTool[] = [
   // File operations
@@ -599,6 +600,83 @@ export const TOOLS: ChatCompletionTool[] = [
       },
     },
   },
+
+  // Pull Request operations
+  {
+    type: 'function',
+    function: {
+      name: 'create_auto_branch',
+      description:
+        'Create an automatic branch for a new task with naming pattern: cadre/<feature-name>-<random-hash>. Similar to Claude Code branch creation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          feature_name: {
+            type: 'string',
+            description:
+              'Feature or task name (will be sanitized). Example: "add-login-feature" becomes "cadre/add-login-feature-a1b2c"',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['feature_name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_pr_requirements',
+      description:
+        'Check if GitHub CLI (gh) or GitLab CLI (glab) is installed and authenticated. Shows installation/authentication instructions if needed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_pull_request',
+      description:
+        'Create a pull request (GitHub) or merge request (GitLab). Automatically detects repository type, uses PR templates if available, and handles authentication.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'PR/MR title',
+          },
+          body: {
+            type: 'string',
+            description: 'PR/MR body/description (optional - will use template if not provided)',
+          },
+          base_branch: {
+            type: 'string',
+            description: "Base branch to merge into (optional - defaults to 'main' or 'master')",
+          },
+          draft: {
+            type: 'boolean',
+            description: 'Create as draft PR/MR (optional, default false)',
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory (defaults to current directory)',
+          },
+        },
+        required: ['title'],
+      },
+    },
+  },
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -671,6 +749,26 @@ export const handleToolCall = async (name: string, args: any): Promise<string> =
       return gitflowTools.gitflowRelease(args.action, args.version, args.cwd);
     case 'gitflow_hotfix':
       return gitflowTools.gitflowHotfix(args.action, args.version, args.cwd);
+
+    // Pull Request operations
+    case 'create_auto_branch': {
+      const result = await prTools.createAutoBranch(args.feature_name, args.cwd);
+      return JSON.stringify(result, null, 2);
+    }
+    case 'check_pr_requirements': {
+      const result = await prTools.checkPrRequirements(args.cwd);
+      return JSON.stringify(result, null, 2);
+    }
+    case 'create_pull_request': {
+      const result = await prTools.createPullRequest({
+        title: args.title,
+        body: args.body,
+        baseBranch: args.base_branch,
+        draft: args.draft,
+        cwd: args.cwd,
+      });
+      return JSON.stringify(result, null, 2);
+    }
 
     default:
       return `Unknown tool: ${name}`;
