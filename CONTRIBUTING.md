@@ -18,6 +18,7 @@ To maintain the quality and reliability of the Cadre codebase, the following rul
 - **Bug Fixes**: Every bug fix MUST include a regression test that fails without the fix and passes with it.
 - **Refactoring**: Ensure all existing tests pass. If the refactoring changes behavior, update tests accordingly.
 - **No Untested Code**: Do not submit code that acts "blindly". Verify your changes.
+- **Performance Testing**: Any changes to the indexing system (`src/index-system`) MUST be verified with `npm run benchmark` to ensure no regression.
 
 ### 2. Code Style
 

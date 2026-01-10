@@ -1,8 +1,8 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import type { ProjectIndex, Symbol, SearchResult, IndexStats } from './types.js';
-import { getIndexDir } from './storage.js';
+import type { ProjectIndex, Symbol, SearchResult, IndexStats, FileIndex } from './types';
+import { getIndexDir } from './storage';
 
 export class SqliteIndexManager {
   private db: Database.Database;
@@ -126,64 +126,88 @@ export class SqliteIndexManager {
       setMeta.run('total_files', index.totalFiles.toString());
       setMeta.run('total_symbols', index.totalSymbols.toString());
 
-      // Insert files and symbols
-      const insertFile = this.db.prepare(`
-        INSERT INTO files (path, absolute_path, size, mtime, hash, language, lines)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      const insertSymbol = this.db.prepare(`
-        INSERT INTO symbols (file_id, name, type, line, end_line, signature, exported)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      const insertImport = this.db.prepare(`
-        INSERT INTO imports (file_id, module) VALUES (?, ?)
-      `);
-
-      const insertExport = this.db.prepare(`
-        INSERT INTO exports (file_id, name) VALUES (?, ?)
-      `);
-
-      for (const fileIndex of Object.values(index.files)) {
-        const fileResult = insertFile.run(
-          fileIndex.metadata.path,
-          fileIndex.metadata.absolutePath,
-          fileIndex.metadata.size,
-          fileIndex.metadata.mtime,
-          fileIndex.metadata.hash,
-          fileIndex.metadata.language || null,
-          fileIndex.metadata.lines,
-        );
-
-        const fileId = fileResult.lastInsertRowid;
-
-        // Insert symbols
-        for (const symbol of fileIndex.symbols) {
-          insertSymbol.run(
-            fileId,
-            symbol.name,
-            symbol.type,
-            symbol.line,
-            symbol.endLine || null,
-            symbol.signature || null,
-            symbol.exported ? 1 : 0,
-          );
-        }
-
-        // Insert imports
-        for (const imp of fileIndex.imports) {
-          insertImport.run(fileId, imp);
-        }
-
-        // Insert exports
-        for (const exp of fileIndex.exports) {
-          insertExport.run(fileId, exp);
-        }
-      }
+      this.insertBatchInternal(index.files);
     });
 
     transaction();
+  }
+
+  /**
+   * Insert a batch of file indexes
+   */
+  insertBatch(files: Record<string, FileIndex>): void {
+    const transaction = this.db.transaction(() => {
+      this.insertBatchInternal(files);
+    });
+    transaction();
+  }
+
+  private insertBatchInternal(files: Record<string, FileIndex>): void {
+    // Insert files and symbols
+    const insertFile = this.db.prepare(`
+      INSERT INTO files (path, absolute_path, size, mtime, hash, language, lines)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertSymbol = this.db.prepare(`
+      INSERT INTO symbols (file_id, name, type, line, end_line, signature, exported)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertImport = this.db.prepare(`
+      INSERT INTO imports (file_id, module) VALUES (?, ?)
+    `);
+
+    const insertExport = this.db.prepare(`
+      INSERT INTO exports (file_id, name) VALUES (?, ?)
+    `);
+
+    for (const fileIndex of Object.values(files)) {
+      // Check if file already exists to avoid unique constraint error
+      // Ideally we should use UPSERT or DELETE first, but for batch inserts we might assume clear/update
+      // Let's use INSERT OR REPLACE for files if we want to support updates,
+      // but the table schema uses AUTOINCREMENT ID, so we need to be careful.
+      // If we are appending or updating, we must handle existing entries.
+
+      // For simplicity in this optimization task:
+      // We will try to DELETE existing entry for this path first to ensure clean state
+      this.db.prepare('DELETE FROM files WHERE path = ?').run(fileIndex.metadata.path);
+
+      const fileResult = insertFile.run(
+        fileIndex.metadata.path,
+        fileIndex.metadata.absolutePath,
+        fileIndex.metadata.size,
+        fileIndex.metadata.mtime,
+        fileIndex.metadata.hash,
+        fileIndex.metadata.language || null,
+        fileIndex.metadata.lines,
+      );
+
+      const fileId = fileResult.lastInsertRowid;
+
+      // Insert symbols
+      for (const symbol of fileIndex.symbols) {
+        insertSymbol.run(
+          fileId,
+          symbol.name,
+          symbol.type,
+          symbol.line,
+          symbol.endLine || null,
+          symbol.signature || null,
+          symbol.exported ? 1 : 0,
+        );
+      }
+
+      // Insert imports
+      for (const imp of fileIndex.imports) {
+        insertImport.run(fileId, imp);
+      }
+
+      // Insert exports
+      for (const exp of fileIndex.exports) {
+        insertExport.run(fileId, exp);
+      }
+    }
   }
 
   /**
