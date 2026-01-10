@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs/promises';
-import path from 'path';
 import { indexFile, indexDirectory, hasFileChanged } from '../../src/index-system/file-indexer';
 
 vi.mock('fs/promises');

@@ -133,8 +133,7 @@ describe('Index Storage', () => {
       expect(fs.mkdir).toHaveBeenCalled();
       expect(fs.writeFile).toHaveBeenCalledWith(
         expect.stringContaining('index.json'),
-        expect.stringContaining(mockIndex.projectRoot),
-        'utf-8',
+        expect.any(Buffer), // Now expecting compressed Buffer instead of JSON string
       );
     });
   });
