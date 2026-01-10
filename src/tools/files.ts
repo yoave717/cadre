@@ -70,7 +70,11 @@ export const readFile = async (
   }
 };
 
-export const writeFile = async (filePath: string, content: string): Promise<string> => {
+export const writeFile = async (
+  filePath: string,
+  content: string,
+  requester?: string,
+): Promise<string> => {
   const absolutePath = path.resolve(filePath);
 
   // Check if file was read first (safety measure)
@@ -88,6 +92,7 @@ export const writeFile = async (filePath: string, content: string): Promise<stri
     path.dirname(absolutePath),
     'write',
     `write file: ${filePath}`,
+    requester,
   );
 
   if (!hasPermission) {

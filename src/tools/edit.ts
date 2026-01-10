@@ -12,6 +12,7 @@ export const editFile = async (
   oldString: string,
   newString: string,
   replaceAll: boolean = false,
+  requester?: string,
 ): Promise<string> => {
   const absolutePath = path.resolve(filePath);
 
@@ -26,6 +27,7 @@ export const editFile = async (
     path.dirname(absolutePath),
     'edit',
     `edit file: ${filePath}`,
+    requester,
   );
 
   if (!hasPermission) {

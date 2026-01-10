@@ -34,7 +34,11 @@ function isDangerous(command: string): boolean {
   return DANGEROUS_PATTERNS.some((pattern) => pattern.test(command));
 }
 
-export const runCommand = async (command: string, cwd?: string): Promise<string> => {
+export const runCommand = async (
+  command: string,
+  cwd?: string,
+  requester?: string,
+): Promise<string> => {
   // Check for blocked commands
   if (isBlocked(command)) {
     return `Error: This command is blocked for safety reasons: ${command}`;
@@ -47,7 +51,12 @@ export const runCommand = async (command: string, cwd?: string): Promise<string>
     ? `run dangerous command: ${command}`
     : `run command: ${command}`;
 
-  const hasPermission = await permissionManager.checkAndRequest(workDir, 'bash', context);
+  const hasPermission = await permissionManager.checkAndRequest(
+    workDir,
+    'bash',
+    context,
+    requester,
+  );
 
   if (!hasPermission) {
     return `Permission denied to run command in ${workDir}`;

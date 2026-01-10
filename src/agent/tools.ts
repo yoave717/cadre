@@ -686,7 +686,11 @@ export const TOOLS: ChatCompletionTool[] = [
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const handleToolCall = async (name: string, args: any): Promise<string> => {
+export const handleToolCall = async (
+  name: string,
+  args: any,
+  executionContext?: string,
+): Promise<string> => {
   switch (name) {
     // File operations
     case 'list_files':
@@ -694,9 +698,15 @@ export const handleToolCall = async (name: string, args: any): Promise<string> =
     case 'read_file':
       return fileTools.readFile(args.path, args.offset, args.limit);
     case 'write_file':
-      return fileTools.writeFile(args.path, args.content);
+      return fileTools.writeFile(args.path, args.content, executionContext);
     case 'edit_file':
-      return editTools.editFile(args.path, args.old_string, args.new_string, args.replace_all);
+      return editTools.editFile(
+        args.path,
+        args.old_string,
+        args.new_string,
+        args.replace_all,
+        executionContext,
+      );
     case 'create_directory':
       return fileTools.createDirectory(args.path);
 
@@ -714,7 +724,7 @@ export const handleToolCall = async (name: string, args: any): Promise<string> =
 
     // Shell operations
     case 'run_command':
-      return runTools.runCommand(args.command, args.cwd);
+      return runTools.runCommand(args.command, args.cwd, executionContext);
 
     // Index operations
     case 'build_index':

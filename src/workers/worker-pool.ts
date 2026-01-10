@@ -94,6 +94,9 @@ Remember: Other workers are handling other tasks in parallel. Don't worry about 
     worker.state.currentTask = task;
     worker.state.startTime = new Date();
 
+    // Set execution context on the agent for permission tracking
+    worker.agent.setExecutionContext(worker.id);
+
     // Create abort controller for timeout
     worker.abortController = new AbortController();
     const timeoutId = this.config.timeoutMs
@@ -144,6 +147,9 @@ Remember: Other workers are handling other tasks in parallel. Don't worry about 
       worker.state.status = 'idle';
       worker.state.currentTask = undefined;
 
+      // Clear execution context
+      worker.agent.setExecutionContext(undefined);
+
       if (timeoutId) clearTimeout(timeoutId);
 
       const result: TaskResult = {
@@ -170,6 +176,9 @@ Remember: Other workers are handling other tasks in parallel. Don't worry about 
       worker.state.status = 'error';
       worker.state.errors.push({ taskId: task.id, error: errorMessage });
       worker.state.currentTask = undefined;
+
+      // Clear execution context
+      worker.agent.setExecutionContext(undefined);
 
       if (timeoutId) clearTimeout(timeoutId);
 

@@ -7,11 +7,17 @@ export type PermissionResponse = 'yes_once' | 'yes_always' | 'deny';
 
 /**
  * Prompt the user for permission to perform an operation.
+ *
+ * @param projectPath - The project path
+ * @param type - The permission type
+ * @param context - Description of the action
+ * @param requester - Optional identifier of who is requesting (e.g., worker-id)
  */
 export async function promptForPermission(
   projectPath: string,
   type: PermissionType,
   context: string,
+  requester?: string,
 ): Promise<PermissionResponse> {
   const projectName = getProjectName(projectPath);
 
@@ -20,10 +26,17 @@ export async function promptForPermission(
   console.log(chalk.dim(`  Project: ${projectName}`));
   console.log(chalk.dim(`  Path:    ${projectPath}`));
   console.log(chalk.dim(`  Action:  ${context}`));
+  if (requester) {
+    console.log(chalk.dim(`  Requester: ${chalk.cyan(requester)}`));
+  }
   console.log('');
 
+  const message = requester
+    ? `Allow ${type} operations for ${chalk.cyan(requester)} in ${projectName}?`
+    : `Allow ${type} operations in ${projectName}?`;
+
   const answer = await select({
-    message: `Allow ${type} operations in ${projectName}?`,
+    message,
     choices: [
       {
         name: 'Yes, just this once',

@@ -38,6 +38,12 @@ export class Agent {
 
   private contextManager: ContextManager;
 
+  /**
+   * Execution context (e.g., worker ID) for this agent.
+   * Used to identify the requester in permission prompts.
+   */
+  private executionContext?: string;
+
   private systemPrompt: string = `You are Cadre, a helpful AI coding assistant running in a CLI environment.
 
 You have access to the file system and can run commands. Your capabilities include:
@@ -91,6 +97,21 @@ Guidelines:
 
   getSystemPrompt(): string {
     return this.systemPrompt;
+  }
+
+  /**
+   * Set the execution context for this agent (e.g., worker ID).
+   * This context is used to identify the requester in permission prompts.
+   */
+  setExecutionContext(context: string | undefined): void {
+    this.executionContext = context;
+  }
+
+  /**
+   * Get the execution context for this agent.
+   */
+  getExecutionContext(): string | undefined {
+    return this.executionContext;
   }
 
   async *chat(userInput: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
@@ -237,7 +258,7 @@ Guidelines:
               return {
                 toolCall,
                 args,
-                result: await handleToolCall(toolCall.name, args),
+                result: await handleToolCall(toolCall.name, args, this.executionContext),
               };
             }),
           );
