@@ -7,6 +7,7 @@ Cadre is a Claude Code-like AI Coding Assistant CLI that provides an intelligent
 - **Interactive Agent Loop** - Natural conversation with your codebase
 - **Streaming Responses** - Real-time token streaming
 - **Full Tool Suite** - Read, write, edit files, run commands, glob, grep
+- **Project Indexing** - Fast symbol and file search with on-prem indexing (like Cursor IDE)
 - **Context Compression** - Automatic summarization for long conversations
 - **Permission System** - Per-project permissions with "remember" option
 - **Multi-model Support** - OpenAI, vLLM, Together, Qwen, and other OpenAI-compatible APIs
@@ -168,14 +169,80 @@ cadre permissions revoke /path/to/project
 # Detect language
 cadre detect
 
+# Manage project index
+cadre index build          # Build index for fast search
+cadre index update         # Update index incrementally
+cadre index stats          # Show index statistics
+cadre index list           # List all indexed projects
+cadre index clear          # Clear all indexes
+
 # Reset configuration
 cadre reset
 ```
+
+## Project Indexing
+
+Cadre includes a powerful on-prem project indexing system (similar to Cursor IDE) that makes searching large codebases fast and efficient. The index is stored locally in `~/.cadre/indexes/` and contains:
+
+- **File metadata** - paths, sizes, modification times, content hashes
+- **Symbol extraction** - functions, classes, interfaces, types, variables, constants
+- **Import/export tracking** - dependency relationships
+- **Language detection** - automatic language identification
+
+### Building an Index
+
+Build a project index before starting work for best performance:
+
+```bash
+cadre index build
+```
+
+This will scan your project and create an index containing:
+- All source files (excluding node_modules, .git, etc.)
+- All code symbols with their locations and types
+- Import/export relationships
+
+### Using the Index
+
+Once indexed, the AI can use fast search tools:
+
+```
+> search for the loadConfig function
+
+Found 1 symbol:
+src/config.ts:48 - function loadConfig (exported)
+  export function loadConfig(): Config {
+```
+
+The index enables much faster operations:
+- `search_symbols` - Find functions/classes instantly (vs. grep)
+- `find_files` - Locate files by name quickly (vs. glob)
+- `find_importers` - See what imports a module
+- `get_file_symbols` - View all symbols in a file
+
+### Keeping the Index Updated
+
+Update the index incrementally after making changes:
+
+```bash
+cadre index update
+```
+
+This only re-indexes changed files, making it very fast.
+
+### Index Storage
+
+Indexes are stored per-project in `~/.cadre/indexes/` using a hash of the project path. This means:
+- Each project has its own index
+- Indexes persist across sessions
+- Safe for multiple projects
+- Fully on-premises (no cloud)
 
 ## Tools
 
 Cadre has access to the following tools:
 
+### File Operations
 | Tool               | Description                                |
 | ------------------ | ------------------------------------------ |
 | `read_file`        | Read file contents with line numbers       |
@@ -183,10 +250,29 @@ Cadre has access to the following tools:
 | `edit_file`        | Make surgical edits via string replacement |
 | `list_files`       | List directory contents                    |
 | `create_directory` | Create directories                         |
-| `glob`             | Find files by pattern (e.g., `**/*.ts`)    |
-| `grep`             | Search file contents with regex            |
-| `directory_tree`   | Show directory structure                   |
-| `run_command`      | Execute shell commands                     |
+
+### Search Operations
+| Tool             | Description                             |
+| ---------------- | --------------------------------------- |
+| `glob`           | Find files by pattern (e.g., `**/*.ts`) |
+| `grep`           | Search file contents with regex         |
+| `directory_tree` | Show directory structure                |
+
+### Index Operations (Fast Search)
+| Tool              | Description                                       |
+| ----------------- | ------------------------------------------------- |
+| `build_index`     | Build project index for fast search               |
+| `update_index`    | Update index incrementally (only changed files)   |
+| `search_symbols`  | Search for functions, classes, etc. (much faster) |
+| `find_files`      | Find files by name (faster than glob)             |
+| `get_file_symbols`| Get all symbols in a file                         |
+| `find_importers`  | Find files importing a specific module            |
+| `index_stats`     | Show index statistics                             |
+
+### Shell Operations
+| Tool          | Description              |
+| ------------- | ------------------------ |
+| `run_command` | Execute shell commands   |
 
 ## Permission System
 
@@ -231,6 +317,7 @@ cadre/
 │   ├── agent/            # Agent loop and tools
 │   ├── context/          # Context management
 │   ├── permissions/      # Permission system
+│   ├── index-system/     # Project indexing for fast search
 │   ├── input/            # Image and multi-line input
 │   ├── tools/            # Tool implementations
 │   └── ui/               # Interactive UI

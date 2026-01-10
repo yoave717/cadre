@@ -4,6 +4,7 @@ import * as runTools from '../tools/run.js';
 import * as editTools from '../tools/edit.js';
 import * as globTools from '../tools/glob.js';
 import * as grepTools from '../tools/grep.js';
+import * as indexTools from '../tools/index.js';
 import * as gitTools from '../tools/git.js';
 import * as gitflowTools from '../tools/gitflow.js';
 
@@ -218,6 +219,127 @@ export const TOOLS: ChatCompletionTool[] = [
           },
         },
         required: ['command'],
+      },
+    },
+  },
+
+  // Index operations
+  {
+    type: 'function',
+    function: {
+      name: 'build_index',
+      description:
+        'Build a complete index of the project for fast search. Indexes files, symbols, and dependencies. Run this once when starting work on a project.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_index',
+      description:
+        'Update the existing project index incrementally (only changed files). Faster than build_index.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_symbols',
+      description:
+        'Search for code symbols (functions, classes, interfaces, etc.) in the indexed project. Much faster than grep for finding definitions.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Symbol name to search for (supports partial matching)',
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of results (default 50)',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_files',
+      description:
+        'Find files by path or name pattern using the index. Faster than glob for large projects.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: {
+            type: 'string',
+            description: 'File path or name pattern to search for',
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of results (default 100)',
+          },
+        },
+        required: ['pattern'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_file_symbols',
+      description:
+        'Get all symbols defined in a specific file from the index. Useful for understanding file structure.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Path to the file',
+          },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'find_importers',
+      description:
+        'Find all files that import a specific module. Useful for understanding dependencies.',
+      parameters: {
+        type: 'object',
+        properties: {
+          module: {
+            type: 'string',
+            description: 'Module name to search for',
+          },
+        },
+        required: ['module'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'index_stats',
+      description:
+        'Show statistics about the current project index (file count, symbol count, languages, etc.)',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
       },
     },
   },
@@ -509,6 +631,22 @@ export const handleToolCall = async (name: string, args: any): Promise<string> =
     // Shell operations
     case 'run_command':
       return runTools.runCommand(args.command, args.cwd);
+
+    // Index operations
+    case 'build_index':
+      return indexTools.buildIndex();
+    case 'update_index':
+      return indexTools.updateIndex();
+    case 'search_symbols':
+      return indexTools.searchSymbols(args.query, { limit: args.limit });
+    case 'find_files':
+      return indexTools.findFiles(args.pattern, { limit: args.limit });
+    case 'get_file_symbols':
+      return indexTools.getFileSymbols(args.path);
+    case 'find_importers':
+      return indexTools.findImporters(args.module);
+    case 'index_stats':
+      return indexTools.indexStats();
 
     // Git operations
     case 'git_status':
