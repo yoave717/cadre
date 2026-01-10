@@ -309,31 +309,41 @@ glab auth login # For GitLab
 
 #### Automatic PR Description Generation
 
-When creating a PR/MR, Cadre automatically generates a comprehensive description including:
+When creating a PR/MR, Cadre generates comprehensive descriptions that include:
 
-- **Summary of commits** - Lists all commits since the branch diverged
-- **File changes** - Shows files changed with line additions/deletions
-- **Testing checklist** - Pre-populated checklist items
-- **Template integration** - Uses your project's PR/MR template if available
+- **High-level Summary** - Explains WHAT problem is being solved, HOW it was implemented, and WHY this approach was chosen
+- **What Changed** - Lists all commits since the branch diverged
+- **Technical Details** - File change statistics and key files modified
+- **Testing Checklist** - Pre-populated checklist items
+- **Template Integration** - Uses your project's PR/MR template if available
+
+**Key Feature:** The AI is instructed to always provide meaningful context when creating PRs, not just list commits. It must explain the rationale and approach.
 
 Example generated PR description:
 
 ```markdown
 ## Summary
 
-This PR includes the following changes:
+This PR adds automatic branch creation and PR/MR support to streamline Git workflows in Cadre.
 
-- feat: add automatic branch creation
-- feat: implement PR/MR support for GitHub and GitLab
-- docs: update README with new features
+**What:** Implements automatic branch creation with the naming pattern `cadre/<feature>-<hash>` (similar to Claude Code) and adds PR/MR creation capabilities for both GitHub and GitLab.
 
-## Changes
+**How:** Uses the official `gh` and `glab` CLI tools for PR/MR creation, with automatic repository type detection and smart base branch identification. Branch names are sanitized and include a random 5-character hash for uniqueness.
 
-**Files changed:** 8
-**Lines added:** 750
-**Lines deleted:** 12
+**Why:** This reduces manual branch management overhead and provides a consistent workflow across different Git platforms. The automated PR creation ensures developers can quickly open pull requests with comprehensive descriptions without leaving the terminal.
 
-### Modified Files
+## What Changed
+
+- feat: add automatic branch creation and PR/MR support
+- feat: implement PR description generation
+- docs: update README with Git workflow documentation
+- test: add comprehensive test coverage
+
+## Technical Details
+
+**Files changed:** 8 | **Lines added:** 750 | **Lines deleted:** 12
+
+### Key Files Modified
 
 - `src/tools/pr.ts` (+256/-0)
 - `src/tools/repo-utils.ts` (+155/-0)

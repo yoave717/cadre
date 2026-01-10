@@ -648,17 +648,23 @@ export const TOOLS: ChatCompletionTool[] = [
     function: {
       name: 'create_pull_request',
       description:
-        'Create a pull request (GitHub) or merge request (GitLab). Automatically detects repository type, uses PR templates if available, and handles authentication.',
+        'Create a pull request (GitHub) or merge request (GitLab). IMPORTANT: Always provide a meaningful summary parameter that explains WHAT problem is being solved, HOW it was solved, and WHY this approach was chosen. The tool will automatically add technical details (commits, file changes) but needs context from you.',
       parameters: {
         type: 'object',
         properties: {
           title: {
             type: 'string',
-            description: 'PR/MR title',
+            description: 'PR/MR title - should be clear and descriptive',
+          },
+          summary: {
+            type: 'string',
+            description:
+              'High-level summary explaining: (1) WHAT problem/feature this addresses, (2) HOW it was implemented, and (3) WHY this approach was chosen. This provides context that commits alone cannot convey. Example: "Adds automatic branch creation to streamline Git workflows. Implemented using a consistent naming pattern to maintain organization. This approach was chosen to reduce manual branch management and integrate seamlessly with existing tools."',
           },
           body: {
             type: 'string',
-            description: 'PR/MR body/description (optional - will use template if not provided)',
+            description:
+              'Complete PR/MR body (optional - if not provided, will auto-generate using summary + commits + file changes)',
           },
           base_branch: {
             type: 'string',
@@ -673,7 +679,7 @@ export const TOOLS: ChatCompletionTool[] = [
             description: 'Working directory (defaults to current directory)',
           },
         },
-        required: ['title'],
+        required: ['title', 'summary'],
       },
     },
   },
@@ -763,6 +769,7 @@ export const handleToolCall = async (name: string, args: any): Promise<string> =
       const result = await prTools.createPullRequest({
         title: args.title,
         body: args.body,
+        summary: args.summary,
         baseBranch: args.base_branch,
         draft: args.draft,
         cwd: args.cwd,

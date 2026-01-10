@@ -17,6 +17,7 @@ import {
 export interface CreatePrOptions {
   title: string;
   body?: string;
+  summary?: string; // High-level summary of what/how/why
   baseBranch?: string;
   draft?: boolean;
   cwd?: string;
@@ -154,31 +155,39 @@ function getFileChanges(baseBranch: string, cwd: string): FileChange[] {
 /**
  * Generate PR description automatically from commits and changes
  */
-export function generatePrDescription(baseBranch: string, cwd: string = process.cwd()): string {
+export function generatePrDescription(
+  baseBranch: string,
+  cwd: string = process.cwd(),
+  summary?: string,
+): string {
   const commits = getCommitsSinceBase(baseBranch, cwd);
   const fileChanges = getFileChanges(baseBranch, cwd);
 
-  let description = '## Summary\n\n';
+  let description = '';
 
-  // Summarize commits
+  // Add high-level summary if provided
+  if (summary) {
+    description += '## Summary\n\n';
+    description += `${summary}\n\n`;
+  }
+
+  // Add what changed (commits)
   if (commits.length > 0) {
-    description += 'This PR includes the following changes:\n\n';
+    description += '## What Changed\n\n';
     commits.forEach((commit) => {
       description += `- ${commit.message}\n`;
     });
     description += '\n';
-  } else {
-    description += 'No commits found.\n\n';
   }
 
-  // Add file changes summary
+  // Add technical details (file changes)
   if (fileChanges.length > 0) {
     const totalAdditions = fileChanges.reduce((sum, change) => sum + change.additions, 0);
     const totalDeletions = fileChanges.reduce((sum, change) => sum + change.deletions, 0);
 
-    description += '## Changes\n\n';
-    description += `**Files changed:** ${fileChanges.length}\n`;
-    description += `**Lines added:** ${totalAdditions}\n`;
+    description += '## Technical Details\n\n';
+    description += `**Files changed:** ${fileChanges.length} | `;
+    description += `**Lines added:** ${totalAdditions} | `;
     description += `**Lines deleted:** ${totalDeletions}\n\n`;
 
     // List key files (limit to 10 most changed files)
@@ -186,13 +195,14 @@ export function generatePrDescription(baseBranch: string, cwd: string = process.
       .sort((a, b) => b.additions + b.deletions - (a.additions + a.deletions))
       .slice(0, 10);
 
-    description += '### Modified Files\n\n';
+    description += '### Key Files Modified\n\n';
     sortedChanges.forEach((change) => {
       description += `- \`${change.file}\` (+${change.additions}/-${change.deletions})\n`;
     });
     description += '\n';
   }
 
+  // Add testing section
   description += '## Testing\n\n';
   description += '- [ ] Tests pass locally\n';
   description += '- [ ] Code follows project style guidelines\n';
@@ -283,11 +293,11 @@ async function createGitHubPr(options: CreatePrOptions): Promise<CreatePrResult>
       const template = findPrTemplate(cwd, 'github');
       if (template) {
         // If template exists, try to fill it with generated content
-        const generatedContent = generatePrDescription(baseBranch, cwd);
+        const generatedContent = generatePrDescription(baseBranch, cwd, options.summary);
         body = `${generatedContent}\n\n---\n\n${template}`;
       } else {
         // Generate description from commits and changes
-        body = generatePrDescription(baseBranch, cwd);
+        body = generatePrDescription(baseBranch, cwd, options.summary);
       }
     }
 
@@ -364,11 +374,11 @@ async function createGitLabMr(options: CreatePrOptions): Promise<CreatePrResult>
       const template = findPrTemplate(cwd, 'gitlab');
       if (template) {
         // If template exists, try to fill it with generated content
-        const generatedContent = generatePrDescription(baseBranch, cwd);
+        const generatedContent = generatePrDescription(baseBranch, cwd, options.summary);
         body = `${generatedContent}\n\n---\n\n${template}`;
       } else {
         // Generate description from commits and changes
-        body = generatePrDescription(baseBranch, cwd);
+        body = generatePrDescription(baseBranch, cwd, options.summary);
       }
     }
 

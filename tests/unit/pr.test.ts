@@ -90,13 +90,28 @@ describe('PR Tools', () => {
 
       const description = generatePrDescription('main', '/test/path');
 
-      expect(description).toContain('## Summary');
+      expect(description).toContain('## What Changed');
       expect(description).toContain('feat: add login');
       expect(description).toContain('fix: bug fix');
-      expect(description).toContain('## Changes');
+      expect(description).toContain('## Technical Details');
       expect(description).toContain('**Files changed:** 2');
       expect(description).toContain('**Lines added:** 30');
       expect(description).toContain('**Lines deleted:** 15');
+    });
+
+    it('should include summary when provided', () => {
+      (childProcess.execSync as unknown as ReturnType<typeof vi.fn>)
+        .mockReturnValueOnce('feature-branch')
+        .mockReturnValueOnce('abc123|||feat: add login')
+        .mockReturnValueOnce('feature-branch')
+        .mockReturnValueOnce('10\t5\tsrc/login.ts');
+
+      const summary = 'This PR adds user authentication to improve security.';
+      const description = generatePrDescription('main', '/test/path', summary);
+
+      expect(description).toContain('## Summary');
+      expect(description).toContain(summary);
+      expect(description).toContain('## What Changed');
     });
 
     it('should handle no commits', () => {
@@ -108,7 +123,8 @@ describe('PR Tools', () => {
 
       const description = generatePrDescription('main', '/test/path');
 
-      expect(description).toContain('No commits found');
+      expect(description).toContain('## Testing');
+      expect(description).not.toContain('## What Changed');
     });
 
     it('should include testing checklist', () => {
