@@ -9,20 +9,56 @@ import type {
 } from './types.js';
 import { loadIndex, saveIndex, hashProjectPath } from './storage.js';
 import { indexDirectory, indexFile, hasFileChanged, countFiles } from './file-indexer.js';
+import { SqliteIndexManager } from './sqlite-manager.js';
 
 export class IndexManager {
   private projectRoot: string;
   private index: ProjectIndex | null = null;
+  private sqlite: SqliteIndexManager | null = null;
+  private useSqlite: boolean;
 
-  constructor(projectRoot: string) {
+  constructor(projectRoot: string, options: { useSqlite?: boolean } = {}) {
     this.projectRoot = path.resolve(projectRoot);
+    this.useSqlite = options.useSqlite ?? true; // Default to SQLite
+
+    if (this.useSqlite) {
+      try {
+        this.sqlite = new SqliteIndexManager(this.projectRoot);
+      } catch (error) {
+        console.warn('Failed to initialize SQLite, falling back to JSON:', error);
+        this.useSqlite = false;
+      }
+    }
   }
 
   /**
    * Load existing index from disk
    */
   async load(): Promise<boolean> {
+    if (this.useSqlite && this.sqlite) {
+      // Try SQLite first
+      try {
+        const hasData = this.sqlite.hasData();
+        if (hasData) {
+          return true;
+        }
+      } catch {
+        // Fall through to JSON
+      }
+    }
+
+    // Load from JSON
     this.index = await loadIndex(this.projectRoot);
+
+    // If we have JSON but not SQLite, import to SQLite
+    if (this.index && this.useSqlite && this.sqlite) {
+      try {
+        this.sqlite.importFromJSON(this.index);
+      } catch (error) {
+        console.warn('Failed to import to SQLite:', error);
+      }
+    }
+
     return this.index !== null;
   }
 
@@ -191,6 +227,12 @@ export class IndexManager {
    * Search for symbols by name
    */
   searchSymbols(query: string, limit: number = 50): SearchResult[] {
+    // Use SQLite if available
+    if (this.useSqlite && this.sqlite) {
+      return this.sqlite.searchSymbols(query, limit);
+    }
+
+    // Fallback to JSON search
     if (!this.index) return [];
 
     const results: SearchResult[] = [];
@@ -246,6 +288,12 @@ export class IndexManager {
    * Find files by path pattern
    */
   findFiles(pattern: string, limit: number = 100): string[] {
+    // Use SQLite if available
+    if (this.useSqlite && this.sqlite) {
+      return this.sqlite.findFiles(pattern, limit);
+    }
+
+    // Fallback to JSON search
     if (!this.index) return [];
 
     const results: string[] = [];
@@ -271,6 +319,12 @@ export class IndexManager {
    * Get all symbols in a file
    */
   getFileSymbols(filePath: string): Symbol[] {
+    // Use SQLite if available
+    if (this.useSqlite && this.sqlite) {
+      return this.sqlite.getFileSymbols(filePath);
+    }
+
+    // Fallback to JSON
     if (!this.index) return [];
 
     const fileIndex = this.index.files[filePath];
@@ -307,6 +361,12 @@ export class IndexManager {
    * Find files that import a specific module
    */
   findImporters(moduleName: string): string[] {
+    // Use SQLite if available
+    if (this.useSqlite && this.sqlite) {
+      return this.sqlite.findImporters(moduleName);
+    }
+
+    // Fallback to JSON
     if (!this.index) return [];
 
     const importers: string[] = [];
@@ -324,6 +384,12 @@ export class IndexManager {
    * Get index statistics
    */
   getStats(): IndexStats | null {
+    // Use SQLite if available
+    if (this.useSqlite && this.sqlite) {
+      return this.sqlite.getStats();
+    }
+
+    // Fallback to JSON
     if (!this.index) return null;
 
     let totalSize = 0;
