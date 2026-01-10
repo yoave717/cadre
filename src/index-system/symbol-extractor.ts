@@ -49,7 +49,7 @@ const JAVASCRIPT_PATTERNS: LanguagePatterns = {
     /^const\s+.*=\s*require\(['"]([^'"]+)['"]\)/gm,
   ],
   exports: [
-    /^(?:module\.)?exports?\s*=/,
+    /^(?:module\.)?exports?\s*=/gm,
     /^export\s+(?:default\s+)?(?:class|function|const|let|var)\s+(\w+)/gm,
   ],
 };

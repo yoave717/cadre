@@ -113,14 +113,57 @@ export async function listIndexedProjects(): Promise<
       if (entry.isDirectory()) {
         try {
           const projectPath = path.join(INDEX_DIR, entry.name);
-          // Use loadIndex to handle both compressed and uncompressed formats
+          // Try to load JSON index
           const index = await loadIndex(projectPath);
+
           if (index) {
             projects.push({
               path: index.projectRoot,
               hash: entry.name,
               indexed_at: index.indexed_at,
             });
+          } else {
+            // Check for SQLite index
+            try {
+              const dbPath = path.join(projectPath, 'index.db');
+              const stats = await fs.stat(dbPath);
+              if (stats.isFile()) {
+                // We have a DB, try to read metadata using better-sqlite3
+                // Dynamic import to avoid loading native module if not needed
+                const Database = (await import('better-sqlite3')).default;
+                const db = new Database(dbPath, { readonly: true });
+
+                try {
+                  const meta = db
+                    .prepare(
+                      "SELECT value FROM metadata WHERE key IN ('project_root', 'indexed_at')",
+                    )
+                    .all() as Array<{ value: string }>;
+                  // This returns an array of rows, we need to map them manually since the query doesn't give keys in the result row if we select only value,
+                  // but we can select key, value
+                  const rows = db
+                    .prepare(
+                      "SELECT key, value FROM metadata WHERE key IN ('project_root', 'indexed_at')",
+                    )
+                    .all() as Array<{ key: string; value: string }>;
+
+                  const projectRoot = rows.find((r) => r.key === 'project_root')?.value;
+                  const indexedAt = rows.find((r) => r.key === 'indexed_at')?.value;
+
+                  if (projectRoot) {
+                    projects.push({
+                      path: projectRoot,
+                      hash: entry.name,
+                      indexed_at: indexedAt ? parseInt(indexedAt) : stats.mtimeMs,
+                    });
+                  }
+                } finally {
+                  db.close();
+                }
+              }
+            } catch {
+              // Ignore invalid SQLite DBs
+            }
           }
         } catch {
           // Skip invalid indexes

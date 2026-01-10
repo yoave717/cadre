@@ -13,6 +13,8 @@ vi.mock('fs/promises');
 describe('File Indexer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock for realpath to simply return the input path
+    (fs.realpath as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (p) => p);
   });
 
   afterEach(() => {
@@ -419,22 +421,20 @@ class User:
 
       (fs.readdir as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mockFiles);
 
-      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-        async (path: string) => {
-          if (path === '/project/large.ts') {
-            return {
-              isFile: () => true,
-              size: 2 * 1024 * 1024, // 2MB - exceeds limit
-              mtimeMs: Date.now(),
-            };
-          }
+      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+        if (path === '/project/large.ts') {
           return {
             isFile: () => true,
-            size: 100,
+            size: 2 * 1024 * 1024, // 2MB - exceeds limit
             mtimeMs: Date.now(),
           };
-        },
-      );
+        }
+        return {
+          isFile: () => true,
+          size: 100,
+          mtimeMs: Date.now(),
+        };
+      });
 
       (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
         async (path: string) => {

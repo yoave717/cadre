@@ -106,35 +106,33 @@ export const DEFAULT_INDEXING_LIMITS: IndexingLimits = {
 /**
  * Simple concurrency limiter
  */
-const limitConcurrency = <T>(
+/**
+ * Simple concurrency limiter (Iterative approach to avoid recursion depth issues)
+ */
+const limitConcurrency = async <T>(
   items: T[],
   concurrency: number,
   fn: (item: T) => Promise<void>,
 ): Promise<void> => {
-  let index = 0;
-  const active: Promise<void>[] = [];
+  const executing: Promise<void>[] = [];
 
-  const next = (): Promise<void> => {
-    if (index >= items.length) return Promise.resolve();
+  for (const item of items) {
+    const p = Promise.resolve().then(() => fn(item));
+    executing.push(p);
 
-    const item = items[index++];
-    const p = fn(item).then(() => {
-      active.splice(active.indexOf(p), 1);
-    });
+    // Remove from executing list when done
+    const clean = () => {
+      const idx = executing.indexOf(p);
+      if (idx !== -1) executing.splice(idx, 1);
+    };
+    p.then(clean).catch(clean);
 
-    active.push(p);
-
-    if (active.length >= concurrency) {
-      return Promise.race(active).then(next);
+    if (executing.length >= concurrency) {
+      await Promise.race(executing);
     }
+  }
 
-    return Promise.resolve().then(next);
-  };
-
-  const initialBatch = Array.from({ length: Math.min(concurrency, items.length) }, next);
-  return Promise.all(initialBatch)
-    .then(() => Promise.all(active))
-    .then(() => undefined);
+  await Promise.all(executing);
 };
 
 /**
@@ -146,6 +144,7 @@ async function withTimeout<T>(
   operationName: string,
 ): Promise<T> {
   let timeoutHandle: NodeJS.Timeout;
+  let warnHandle: NodeJS.Timeout;
 
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutHandle = setTimeout(() => {
@@ -153,12 +152,26 @@ async function withTimeout<T>(
     }, timeoutMs);
   });
 
+  // Warn if taking more than 2 seconds (soft warning)
+  warnHandle = setTimeout(() => {
+    // Check if we are still pending (implicitly, since this runs)
+    // Only log if timeoutMs is significantly larger than 2s to avoid double noise
+    if (timeoutMs > 2000) {
+      // Using console.error to bypass progress line clearing if possible, or just force newline
+      process.stdout.write(
+        `\n[WARN] Slow operation detected: ${operationName} (running for >2s)\n`,
+      );
+    }
+  }, 2000);
+
   try {
     const result = await Promise.race([promise, timeoutPromise]);
     clearTimeout(timeoutHandle!);
+    clearTimeout(warnHandle!);
     return result;
   } catch (error) {
     clearTimeout(timeoutHandle!);
+    clearTimeout(warnHandle!);
     throw error;
   }
 }
@@ -441,21 +454,33 @@ async function collectFiles(
   maxDepth: number,
   currentDepth: number,
   files: string[],
+  visited: Set<string>,
 ) {
   if (currentDepth >= maxDepth) return;
 
   try {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    // Resolve real path to detect loops
+    const realPath = await fs.realpath(dirPath);
+    if (visited.has(realPath)) return;
+    visited.add(realPath);
+
+    const entries = await fs.readdir(realPath, { withFileTypes: true });
 
     for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
+      const fullPath = path.join(realPath, entry.name);
+
+      // Calculate relative path from project root for ignore checking
+      // Note: fullPath is now based on realPath, which might be outside projectRoot if we followed a symlink
+      // So we should be careful.
+      // If we strictly don't want to follow symlinks out of project, we should check that.
+      // But for now, let's just stick to preventing loops.
       const relativePath = path.relative(projectRoot, fullPath);
 
       // Skip ignored paths
       if (shouldIgnore(relativePath)) continue;
 
       if (entry.isDirectory()) {
-        await collectFiles(fullPath, projectRoot, maxDepth, currentDepth + 1, files);
+        await collectFiles(fullPath, projectRoot, maxDepth, currentDepth + 1, files, visited);
       } else if (entry.isFile() && !isBinaryFile(fullPath)) {
         files.push(fullPath);
       }
@@ -484,8 +509,9 @@ export async function indexDirectory(
   const fileIndexes: Record<string, FileIndex> = {};
   const files: string[] = [];
 
+  const visited = new Set<string>();
   // Step 1: Collect all files first (fast scanning)
-  await collectFiles(dirPath, projectRoot, maxDepth, 0, files);
+  await collectFiles(dirPath, projectRoot, maxDepth, 0, files, visited);
 
   // Step 2: Process files in parallel
   await limitConcurrency(files, concurrency, async (fullPath) => {
