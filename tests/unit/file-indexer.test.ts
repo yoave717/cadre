@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs/promises';
-import { indexFile, indexDirectory, hasFileChanged } from '../../src/index-system/file-indexer';
+import {
+  indexFile,
+  indexDirectory,
+  hasFileChanged,
+  DEFAULT_INDEXING_LIMITS,
+} from '../../src/index-system/file-indexer';
+import type { IndexingWarning } from '../../src/index-system/types';
 
 vi.mock('fs/promises');
 
@@ -308,6 +314,207 @@ class User:
       const changed = await hasFileChanged(filePath, mtime, hash);
 
       expect(changed).toBe(true);
+    });
+  });
+
+  describe('Defensive Indexing', () => {
+    it('should skip files exceeding line count limit', async () => {
+      const projectRoot = '/project';
+      const filePath = '/project/many-lines.ts';
+      const warnings: IndexingWarning[] = [];
+
+      // Create content with 15,000 lines (exceeds default 10k limit)
+      const content = 'line\n'.repeat(15000);
+
+      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        isFile: () => true,
+        size: content.length,
+        mtimeMs: Date.now(),
+      });
+
+      (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(content);
+
+      const result = await indexFile(filePath, projectRoot, DEFAULT_INDEXING_LIMITS, warnings);
+
+      expect(result).toBeNull();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].reason).toBe('lines');
+      expect(warnings[0].file).toBe('many-lines.ts');
+    });
+
+    it('should skip files with extremely long lines', async () => {
+      const projectRoot = '/project';
+      const filePath = '/project/long-line.ts';
+      const warnings: IndexingWarning[] = [];
+
+      // Create content with one line exceeding 10k chars
+      const content = 'a'.repeat(15000);
+
+      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        isFile: () => true,
+        size: content.length,
+        mtimeMs: Date.now(),
+      });
+
+      (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(content);
+
+      const result = await indexFile(filePath, projectRoot, DEFAULT_INDEXING_LIMITS, warnings);
+
+      expect(result).toBeNull();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].reason).toBe('line-length');
+      expect(warnings[0].file).toBe('long-line.ts');
+    });
+
+    it('should timeout on slow file operations', async () => {
+      const projectRoot = '/project';
+      const filePath = '/project/slow.ts';
+      const warnings: IndexingWarning[] = [];
+
+      const content = 'export function test() {}';
+
+      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        isFile: () => true,
+        size: content.length,
+        mtimeMs: Date.now(),
+      });
+
+      // Mock a slow read operation
+      (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve(content), 10000); // 10 seconds
+          }),
+      );
+
+      const result = await indexFile(
+        filePath,
+        projectRoot,
+        { ...DEFAULT_INDEXING_LIMITS, fileTimeout: 100 }, // 100ms timeout
+        warnings,
+      );
+
+      expect(result).toBeNull();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].reason).toBe('timeout');
+      expect(warnings[0].file).toBe('slow.ts');
+    });
+
+    it('should track multiple warnings during directory indexing', async () => {
+      const projectRoot = '/project';
+      const dirPath = '/project';
+      const warnings: IndexingWarning[] = [];
+
+      interface MockDirent {
+        name: string;
+        isDirectory: () => boolean;
+        isFile: () => boolean;
+      }
+
+      const mockFiles: MockDirent[] = [
+        { name: 'normal.ts', isDirectory: () => false, isFile: () => true },
+        { name: 'large.ts', isDirectory: () => false, isFile: () => true },
+        { name: 'many-lines.ts', isDirectory: () => false, isFile: () => true },
+      ];
+
+      (fs.readdir as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mockFiles);
+
+      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        async (path: string) => {
+          if (path === '/project/large.ts') {
+            return {
+              isFile: () => true,
+              size: 2 * 1024 * 1024, // 2MB - exceeds limit
+              mtimeMs: Date.now(),
+            };
+          }
+          return {
+            isFile: () => true,
+            size: 100,
+            mtimeMs: Date.now(),
+          };
+        },
+      );
+
+      (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        async (path: string) => {
+          if (path === '/project/many-lines.ts') {
+            return 'line\n'.repeat(15000); // Exceeds line count
+          }
+          return 'export function test() {}';
+        },
+      );
+
+      const result = await indexDirectory(
+        dirPath,
+        projectRoot,
+        10,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        DEFAULT_INDEXING_LIMITS,
+        warnings,
+      );
+
+      // Should index normal.ts but skip large.ts and many-lines.ts
+      expect(Object.keys(result)).toContain('normal.ts');
+      expect(warnings.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should use custom limits when provided', async () => {
+      const projectRoot = '/project';
+      const filePath = '/project/custom.ts';
+      const warnings: IndexingWarning[] = [];
+
+      // 6000 lines - exceeds custom limit but not default
+      const content = 'line\n'.repeat(6000);
+
+      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        isFile: () => true,
+        size: content.length,
+        mtimeMs: Date.now(),
+      });
+
+      (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(content);
+
+      const customLimits = {
+        ...DEFAULT_INDEXING_LIMITS,
+        maxLineCount: 5000, // Custom lower limit
+      };
+
+      const result = await indexFile(filePath, projectRoot, customLimits, warnings);
+
+      expect(result).toBeNull();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].reason).toBe('lines');
+    });
+
+    it('should successfully index files within all limits', async () => {
+      const projectRoot = '/project';
+      const filePath = '/project/normal.ts';
+      const warnings: IndexingWarning[] = [];
+
+      const content = `
+export function hello() {
+  return "Hello, World!";
+}
+      `;
+
+      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        isFile: () => true,
+        size: content.length,
+        mtimeMs: Date.now(),
+      });
+
+      (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(content);
+
+      const result = await indexFile(filePath, projectRoot, DEFAULT_INDEXING_LIMITS, warnings);
+
+      expect(result).not.toBeNull();
+      expect(warnings).toHaveLength(0);
+      expect(result?.metadata.path).toBe('normal.ts');
     });
   });
 });

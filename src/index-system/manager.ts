@@ -6,9 +6,17 @@ import type {
   SearchResult,
   Symbol,
   ProgressCallback,
+  IndexingLimits,
+  IndexingWarning,
 } from './types.js';
 import { loadIndex, saveIndex, hashProjectPath } from './storage.js';
-import { indexDirectory, indexFile, hasFileChanged, countFiles } from './file-indexer.js';
+import {
+  indexDirectory,
+  indexFile,
+  hasFileChanged,
+  countFiles,
+  DEFAULT_INDEXING_LIMITS,
+} from './file-indexer.js';
 import { SqliteIndexManager } from './sqlite-manager.js';
 
 export class IndexManager {
@@ -65,8 +73,12 @@ export class IndexManager {
   /**
    * Build a complete index of the project
    */
-  async buildIndex(progressCallback?: ProgressCallback): Promise<IndexStats> {
+  async buildIndex(
+    progressCallback?: ProgressCallback,
+    limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
+  ): Promise<IndexStats> {
     const startTime = Date.now();
+    const warnings: IndexingWarning[] = [];
 
     // Count total files first for progress tracking
     if (progressCallback) {
@@ -122,6 +134,8 @@ export class IndexManager {
       progressState,
       undefined, // Default concurrency
       onFileIndexed,
+      limits, // Pass indexing limits
+      warnings, // Track warnings
     );
 
     // Flush remaining items in batch
@@ -189,6 +203,8 @@ export class IndexManager {
       languages,
       indexed_at: this.index.indexed_at,
       duration,
+      warnings: warnings.length > 0 ? warnings : undefined,
+      skipped: warnings.length,
     };
   }
 

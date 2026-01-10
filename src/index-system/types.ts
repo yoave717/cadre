@@ -39,6 +39,21 @@ export interface ProjectIndex {
   languages: Record<string, number>; // language -> file count
 }
 
+export interface IndexingWarning {
+  file: string;
+  reason: 'size' | 'lines' | 'timeout' | 'line-length' | 'regex-timeout' | 'error';
+  details: string;
+  timestamp: number;
+}
+
+export interface IndexingLimits {
+  maxFileSize: number; // in bytes
+  maxLineCount: number; // max lines per file
+  maxLineLength: number; // max characters per line
+  fileTimeout: number; // timeout per file in ms
+  skipOnError: boolean; // skip files with errors instead of throwing
+}
+
 export interface IndexStats {
   totalFiles: number;
   totalSymbols: number;
@@ -46,6 +61,8 @@ export interface IndexStats {
   languages: Record<string, number>;
   indexed_at: number;
   duration: number; // indexing duration in ms
+  warnings?: IndexingWarning[]; // files that were skipped with reasons
+  skipped?: number; // count of skipped files
 }
 
 export interface SearchResult {
