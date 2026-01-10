@@ -23,6 +23,7 @@ export interface ConfigSchema {
   maxContextTokens?: number;
   maxOutputTokens?: number;
   maxSessionTokens: number;
+  maxTokensPerMinute: number;
   tokenCostInput: number;
   tokenCostOutput: number;
   systemPrompt?: string;
@@ -36,6 +37,7 @@ const config = new Conf<ConfigSchema>({
     modelName: 'gpt-4o',
     openaiBaseUrl: 'https://api.openai.com/v1',
     maxSessionTokens: 0,
+    maxTokensPerMinute: 30000, // 30k tokens per minute default
     tokenCostInput: 5.0, // $5.00 per 1M tokens (GPT-4o approx)
     tokenCostOutput: 15.0, // $15.00 per 1M tokens (GPT-4o approx)
   },
@@ -56,6 +58,10 @@ export const getConfig = (): ConfigSchema => {
     maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || '', 10) || 128000,
     maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS || '', 10) || 16000,
     maxSessionTokens: parseInt(process.env.MAX_SESSION_TOKENS || '', 10) || 0, // 0 = unlimited
+    maxTokensPerMinute:
+      parseInt(process.env.MAX_TOKENS_PER_MINUTE || '', 10) ||
+      config.get('maxTokensPerMinute') ||
+      30000,
     tokenCostInput:
       parseFloat(process.env.TOKEN_COST_INPUT || '') || config.get('tokenCostInput') || 5.0,
     tokenCostOutput:

@@ -6,6 +6,8 @@
 import { Agent } from '../agent/index.js';
 import type { WorkerState, SubTask, TaskResult, WorkerPoolConfig, WorkerMessage } from './types.js';
 import { EventEmitter, setMaxListeners } from 'events';
+import { RateLimiter } from '../utils/rate-limiter.js';
+import { getConfig } from '../config.js';
 
 interface WorkerInstance {
   id: string;
@@ -18,10 +20,22 @@ export class WorkerPool extends EventEmitter {
   private workers: Map<string, WorkerInstance> = new Map();
   private config: WorkerPoolConfig;
   private nextWorkerId = 1;
+  private rateLimiter?: RateLimiter;
 
   constructor(config: WorkerPoolConfig) {
     super();
     this.config = config;
+
+    // Initialize rate limiter if enabled
+    if (config.enableRateLimiting !== false) {
+      const globalConfig = getConfig();
+      const tokensPerMinute = config.maxTokensPerMinute || globalConfig.maxTokensPerMinute;
+
+      this.rateLimiter = new RateLimiter({
+        tokensPerMinute,
+        verbose: false, // Set to true for debugging
+      });
+    }
   }
 
   /**
@@ -47,7 +61,7 @@ Guidelines:
 
 Remember: Other workers are handling other tasks in parallel. Don't worry about tasks outside your assignment.`;
 
-    const agent = new Agent(systemPrompt);
+    const agent = new Agent(systemPrompt, this.rateLimiter);
     const state: WorkerState = {
       id: workerId,
       status: 'idle',

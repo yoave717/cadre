@@ -3,6 +3,7 @@ import { getClient } from '../client.js';
 import { getConfig } from '../config.js';
 import { TOOLS, handleToolCall } from './tools.js';
 import { ContextManager, getContextManager, estimateConversationTokens } from '../context/index.js';
+import { RateLimiter } from '../utils/rate-limiter.js';
 
 export type AgentEvent =
   | { type: 'text_delta'; content: string } // Streaming text chunk
@@ -14,7 +15,8 @@ export type AgentEvent =
   | { type: 'turn_done' } // Agent turn complete
   | { type: 'turn_done' } // Agent turn complete
   | { type: 'context_compressed'; before: number; after: number } // Context was compressed
-  | { type: 'usage_update'; usage: TokenUsage };
+  | { type: 'usage_update'; usage: TokenUsage }
+  | { type: 'rate_limit_wait'; waitTimeMs: number; retryAttempt: number }; // Waiting for rate limit
 
 interface ToolCallAccumulator {
   id: string;
@@ -44,6 +46,11 @@ export class Agent {
    */
   private executionContext?: string;
 
+  /**
+   * Rate limiter for managing API token budget across workers
+   */
+  private rateLimiter?: RateLimiter;
+
   private systemPrompt: string = `You are Cadre, a helpful AI coding assistant running in a CLI environment.
 
 You have access to the file system and can run commands. Act quickly and decisively on simple tasks.
@@ -56,7 +63,7 @@ Guidelines:
 - Use grep only for content not covered by the index (e.g. comments, dynamic strings)
 - Be concise and action-oriented - don't over-explain simple operations`;
 
-  constructor(systemPrompt?: string) {
+  constructor(systemPrompt?: string, rateLimiter?: RateLimiter) {
     const config = getConfig();
     if (systemPrompt) {
       this.systemPrompt = systemPrompt;
@@ -71,6 +78,7 @@ Guidelines:
       timestamp: Date.now(),
     });
     this.contextManager = getContextManager();
+    this.rateLimiter = rateLimiter;
   }
 
   updateSystemPrompt(prompt: string) {
@@ -111,6 +119,71 @@ Guidelines:
     return this.executionContext;
   }
 
+  /**
+   * Check if an error is a rate limit error (429 status)
+   */
+  private isRateLimitError(error: unknown): boolean {
+    if (error && typeof error === 'object' && 'status' in error) {
+      return (error as { status: number }).status === 429;
+    }
+    return false;
+  }
+
+  /**
+   * Make API call with exponential backoff retry on rate limit errors
+   */
+  private async makeAPICallWithRetry(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    client: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    config: any,
+    history: HistoryItem[],
+    signal?: AbortSignal,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> {
+    const maxRetries = 5;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await client.chat.completions.create(
+          {
+            model: config.modelName,
+            // Strip timestamps for OpenAI API
+            messages: history.map(
+              ({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam,
+            ),
+            tools: TOOLS,
+            tool_choice: 'auto',
+            stream: true,
+            stream_options: { include_usage: true },
+            temperature: 0.7, // Lower temperature for more focused, less verbose responses
+            max_tokens: config.maxOutputTokens || 4096, // Limit response length
+          },
+          { signal },
+        );
+      } catch (error) {
+        lastError = error as Error;
+
+        // Only retry on rate limit errors
+        if (this.isRateLimitError(error) && attempt < maxRetries - 1) {
+          // Exponential backoff: 2s, 4s, 8s, 16s, 32s
+          const delayMs = Math.pow(2, attempt + 1) * 1000;
+
+          // Wait before retrying
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+
+        // Not a rate limit error or max retries reached
+        throw error;
+      }
+    }
+
+    // Should never reach here, but TypeScript needs it
+    throw lastError || new Error('Max retries exceeded');
+  }
+
   async *chat(userInput: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     this.history.push({
       role: 'user',
@@ -140,32 +213,31 @@ Guidelines:
 
     try {
       while (true) {
-        // Use streaming API
+        // Estimate tokens for this request
+        const estimatedInputTokens = estimateConversationTokens(this.history);
+        const estimatedOutputTokens = config.maxOutputTokens || 4000;
+        const estimatedTotalTokens = estimatedInputTokens + estimatedOutputTokens;
 
-        const stream = await client.chat.completions.create(
-          {
-            model: config.modelName,
-            // Strip timestamps for OpenAI API
-            messages: this.history.map(
-              ({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam,
-            ),
-            tools: TOOLS,
-            tool_choice: 'auto',
-            stream: true,
-            stream_options: { include_usage: true },
-            temperature: 0.7, // Lower temperature for more focused, less verbose responses
-            max_tokens: config.maxOutputTokens || 4096, // Limit response length
-          },
-          { signal },
-        );
+        // Acquire tokens from rate limiter if available
+        if (this.rateLimiter) {
+          await this.rateLimiter.acquireTokens(estimatedTotalTokens);
+        }
+
+        // Make API call with retry logic
+        const stream = await this.makeAPICallWithRetry(client, config, this.history, signal);
 
         let textContent = '';
         const toolCalls: ToolCallAccumulator[] = [];
+        let actualInputTokens = 0;
+        let actualOutputTokens = 0;
 
         // Process stream chunks
         for await (const chunk of stream) {
           if (chunk.usage) {
             const usage = chunk.usage;
+            actualInputTokens = usage.prompt_tokens;
+            actualOutputTokens = usage.completion_tokens;
+
             // Update session usage
             this.sessionUsage.input += usage.prompt_tokens;
             this.sessionUsage.output += usage.completion_tokens;
@@ -175,6 +247,12 @@ Guidelines:
             const inputCost = (usage.prompt_tokens / 1_000_000) * config.tokenCostInput;
             const outputCost = (usage.completion_tokens / 1_000_000) * config.tokenCostOutput;
             this.sessionUsage.cost += inputCost + outputCost;
+
+            // Report actual usage to rate limiter
+            if (this.rateLimiter) {
+              const actualTotal = actualInputTokens + actualOutputTokens;
+              this.rateLimiter.reportUsage(actualTotal, estimatedTotalTokens);
+            }
 
             yield { type: 'usage_update', usage: { ...this.sessionUsage } };
             continue;
