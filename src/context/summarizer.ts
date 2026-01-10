@@ -56,15 +56,14 @@ export async function summarizeConversation(
     .filter(Boolean)
     .join('\n\n');
 
-  const summaryPrompt = `Summarize the following conversation between a user and an AI coding assistant.
+  const summaryPrompt = `Summarize this conversation (User/AI).
 Focus on:
-- What the user wanted to accomplish
-- Key decisions and changes made
-- Important files and code locations mentioned
-- Current state of the task
-- Any pending issues or next steps
+- User goal
+- Key decisions/changes
+- Important files
+- Task state/Next steps
 
-Keep the summary concise but include all important technical details.
+Keep it concise.
 
 Conversation:
 ${conversationText}
@@ -165,8 +164,8 @@ export async function updateRollingSummary(
     .filter(Boolean)
     .join('\n');
 
-  const updatePrompt = `Update this conversation summary with the new exchanges.
-Keep all important details from the existing summary and add the new information.
+  const updatePrompt = `Update summary with new exchanges.
+Keep key details.
 
 Existing summary:
 ${existingSummary}

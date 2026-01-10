@@ -17,3 +17,12 @@ export {
   BracketedPasteHandler,
   getModePrompt,
 } from './multiline.js';
+
+export { LineEditor, LineEditorOptions } from './line-editor.js';
+export { HistoryManager } from './history-manager.js';
+export {
+  getCompletions,
+  getCommandSuggestions,
+  getInlineSuggestion,
+  CompletionResult,
+} from './completion.js';

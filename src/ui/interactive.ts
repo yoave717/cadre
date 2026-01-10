@@ -1,5 +1,6 @@
 // import { input } from '@inquirer/prompts'; // Replaced by LineEditor
 import { LineEditor } from '../input/line-editor.js';
+import { getCompletions, getInlineSuggestion } from '../input/completion.js';
 import chalk from 'chalk';
 import ora from 'ora';
 import { marked } from 'marked';
@@ -292,20 +293,16 @@ export const startInteractiveSession = async (
         promptStr = `You${branchStr} (tokens: ${tokens}): `;
       }
 
-      // Tab completion for /checkout command
-      const getCompletions = (text: string): string[] => {
-        if (text.startsWith('/checkout ')) {
-          const partial = text.slice(10).toLowerCase();
-          return cachedBranchNames
-            .filter((name) => name.toLowerCase().startsWith(partial))
-            .map((name) => `/checkout ${name}`);
-        }
-        return [];
-      };
+      // Tab completion and inline suggestions
+      const completionCallback = (text: string) => getCompletions(text, cachedBranchNames);
+      const suggestionCallback = (text: string) => getInlineSuggestion(text, cachedBranchNames);
 
       const answer = await lineEditor.read(
         mode === 'normal' ? chalk.green(promptStr) : chalk.yellow(promptStr),
-        { completionCallback: getCompletions },
+        {
+          completionCallback,
+          suggestionCallback,
+        },
       );
 
       // Pass to multi-line handler

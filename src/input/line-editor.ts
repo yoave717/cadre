@@ -4,7 +4,8 @@ import { HistoryManager } from './history-manager.js';
 export interface LineEditorOptions {
   prompt?: string;
   mask?: boolean; // For future password support if needed/optional
-  completionCallback?: (text: string) => string[]; // Tab completion callback
+  completionCallback?: (text: string) => string[] | Promise<string[]>; // Tab completion callback
+  suggestionCallback?: (text: string) => string; // Inline suggestion callback (for grayed-out text)
 }
 
 export class LineEditor {
@@ -19,7 +20,8 @@ export class LineEditor {
   private searchQuery: string = '';
   private searchMatches: string[] = [];
   private searchIndex: number = 0;
-  private completionCallback: ((text: string) => string[]) | null = null;
+  private completionCallback: ((text: string) => string[] | Promise<string[]>) | null = null;
+  private suggestionCallback: ((text: string) => string) | null = null;
   private completions: string[] = [];
   private completionIndex: number = 0;
   private completionPrefix: string = '';
@@ -44,6 +46,7 @@ export class LineEditor {
     this.searchMatches = [];
     this.searchIndex = 0;
     this.completionCallback = options?.completionCallback || null;
+    this.suggestionCallback = options?.suggestionCallback || null;
     this.completions = [];
     this.completionIndex = 0;
     this.completionPrefix = '';
@@ -78,7 +81,7 @@ export class LineEditor {
     }
   }
 
-  private handleData = (data: Buffer | string) => {
+  private handleData = async (data: Buffer | string) => {
     const input = data.toString();
 
     // Handle special keys
@@ -162,7 +165,7 @@ export class LineEditor {
 
       // Tab (9) - Tab completion
       if (charCode === 9) {
-        this.handleTab();
+        await this.handleTab();
         return;
       }
 
@@ -217,6 +220,14 @@ export class LineEditor {
         if (this.cursor < this.buffer.length) {
           this.cursor++;
           this.render();
+        } else if (this.cursor === this.buffer.length && this.suggestionCallback) {
+          // Accept inline suggestion when pressing right arrow at end
+          const suggestion = this.suggestionCallback(this.buffer);
+          if (suggestion) {
+            this.buffer += suggestion;
+            this.cursor = this.buffer.length;
+            this.render();
+          }
         }
         break;
       case '\u001b[H': // Home (some terms)
@@ -286,6 +297,15 @@ export class LineEditor {
     } else {
       // Print prompt and buffer
       process.stdout.write(this.prompt + this.buffer);
+
+      // Show inline suggestion if cursor is at end and we have a suggestion callback
+      if (this.cursor === this.buffer.length && this.suggestionCallback) {
+        const suggestion = this.suggestionCallback(this.buffer);
+        if (suggestion) {
+          // Display suggestion in gray (dim)
+          process.stdout.write('\u001b[90m' + suggestion + '\u001b[0m');
+        }
+      }
 
       // Move cursor to correct position
       readline.cursorTo(process.stdout, this.getPromptLength() + this.cursor);
@@ -376,7 +396,7 @@ export class LineEditor {
     }
   }
 
-  private handleTab() {
+  private async handleTab() {
     if (!this.completionCallback) {
       // No completion callback, ignore Tab
       return;
@@ -384,7 +404,8 @@ export class LineEditor {
 
     // If we don't have active completions, start a new completion cycle
     if (this.completions.length === 0) {
-      this.completions = this.completionCallback(this.buffer);
+      const result = this.completionCallback(this.buffer);
+      this.completions = result instanceof Promise ? await result : result;
       this.completionIndex = 0;
       this.completionPrefix = this.buffer;
 
