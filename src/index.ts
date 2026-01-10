@@ -14,9 +14,7 @@ program
   .version('1.0.0')
   .argument('[prompt]', 'Optional prompt to run (starts interactive mode if not provided)')
   .option('-p, --print', 'Print response and exit (one-shot mode, no follow-up)')
-  .option('-c, --continue', 'Continue in interactive mode after initial prompt')
-  .option('--model <model>', 'Override model name for this session')
-  .option('--system <prompt>', 'Set system prompt/context')
+  .option('--load <file>', 'Load conversation history from file')
   .action(async (prompt, options) => {
     // Check configuration
     const configStatus = isConfigValid();
@@ -38,14 +36,14 @@ program
         await runSinglePrompt(prompt, options.system);
       } else if (options.continue) {
         // Run prompt then continue interactively
-        await startInteractiveSession(prompt, options.system);
+        await startInteractiveSession(prompt, options.system, options.load);
       } else {
         // Default: run prompt then continue interactively
-        await startInteractiveSession(prompt, options.system);
+        await startInteractiveSession(prompt, options.system, options.load);
       }
     } else {
       // No prompt provided, start interactive mode
-      await startInteractiveSession(undefined, options.system);
+      await startInteractiveSession(undefined, options.system, options.load);
     }
   });
 

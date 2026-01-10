@@ -12,7 +12,9 @@ export type AgentEvent =
   | { type: 'tool_result'; name: string; result: string }
   | { type: 'error'; message: string }
   | { type: 'turn_done' } // Agent turn complete
-  | { type: 'context_compressed'; before: number; after: number }; // Context was compressed
+  | { type: 'turn_done' } // Agent turn complete
+  | { type: 'context_compressed'; before: number; after: number } // Context was compressed
+  | { type: 'usage_update'; usage: TokenUsage };
 
 interface ToolCallAccumulator {
   id: string;
@@ -20,12 +22,23 @@ interface ToolCallAccumulator {
   arguments: string;
 }
 
+export interface TokenUsage {
+  input: number;
+  output: number;
+  total: number;
+  cost: number;
+}
+
 export type HistoryItem = ChatCompletionMessageParam & { timestamp: number };
+
 
 export class Agent {
   private history: HistoryItem[] = [];
 
+  private sessionUsage: TokenUsage = { input: 0, output: 0, total: 0, cost: 0 };
+
   private contextManager: ContextManager;
+
 
   private systemPrompt: string = `You are Cadre, a helpful AI coding assistant running in a CLI environment.
 
@@ -122,14 +135,33 @@ Guidelines:
           tools: TOOLS,
           tool_choice: 'auto',
           stream: true,
+          stream_options: { include_usage: true },
         });
+
 
         let textContent = '';
         const toolCalls: ToolCallAccumulator[] = [];
 
         // Process stream chunks
         for await (const chunk of stream) {
+          if (chunk.usage) {
+            const usage = chunk.usage;
+            // Update session usage
+            this.sessionUsage.input += usage.prompt_tokens;
+            this.sessionUsage.output += usage.completion_tokens;
+            this.sessionUsage.total += usage.total_tokens;
+
+            // Calculate cost
+            const inputCost = (usage.prompt_tokens / 1_000_000) * config.tokenCostInput;
+            const outputCost = (usage.completion_tokens / 1_000_000) * config.tokenCostOutput;
+            this.sessionUsage.cost += inputCost + outputCost;
+
+            yield { type: 'usage_update', usage: { ...this.sessionUsage } };
+            continue;
+          }
+
           const delta = chunk.choices[0]?.delta;
+
 
           // Handle text content streaming
           if (delta?.content) {
@@ -247,7 +279,9 @@ Guidelines:
       },
     ];
     this.contextManager.clearSummary();
+    this.sessionUsage = { input: 0, output: 0, total: 0, cost: 0 };
   }
+
 
   getHistory(): HistoryItem[] {
     return [...this.history];
@@ -259,5 +293,28 @@ Guidelines:
 
   getContextStats() {
     return this.contextManager.getStats(this.history);
+  }
+
+  getSessionUsage(): TokenUsage {
+    return { ...this.sessionUsage };
+  }
+
+
+  loadHistory(history: HistoryItem[]) {
+    // Validate history
+    if (!Array.isArray(history) || history.length === 0) {
+      throw new Error('Invalid history: must be a non-empty array');
+    }
+
+    this.history = history;
+    
+    // Reset context summary if any (assume loaded history is full/raw for now, or re-summarize later if needed)
+    this.contextManager.clearSummary();
+
+    // Ensure system prompt is synced if present in history
+    const systemMsg = this.history.find(h => h.role === 'system');
+    if (systemMsg && systemMsg.content) {
+      this.systemPrompt = systemMsg.content as string;
+    }
   }
 }

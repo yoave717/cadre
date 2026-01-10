@@ -22,6 +22,9 @@ export interface ConfigSchema {
   modelName: string;
   maxContextTokens?: number;
   maxOutputTokens?: number;
+  maxSessionTokens: number;
+  tokenCostInput: number;
+  tokenCostOutput: number;
   systemPrompt?: string;
   saveDirectory?: string;
 }
@@ -31,6 +34,9 @@ const config = new Conf<ConfigSchema>({
   defaults: {
     modelName: 'gpt-4o',
     openaiBaseUrl: 'https://api.openai.com/v1',
+    maxSessionTokens: 0,
+    tokenCostInput: 5.0, // $5.00 per 1M tokens (GPT-4o approx)
+    tokenCostOutput: 15.0, // $15.00 per 1M tokens (GPT-4o approx)
   },
 });
 
@@ -48,6 +54,11 @@ export const getConfig = (): ConfigSchema => {
     modelName: process.env.MODEL_NAME || process.env.OPENAI_MODEL || config.get('modelName'),
     maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || '', 10) || 128000,
     maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS || '', 10) || 16000,
+    maxSessionTokens: parseInt(process.env.MAX_SESSION_TOKENS || '', 10) || 0, // 0 = unlimited
+    tokenCostInput:
+      parseFloat(process.env.TOKEN_COST_INPUT || '') || config.get('tokenCostInput') || 5.0,
+    tokenCostOutput:
+      parseFloat(process.env.TOKEN_COST_OUTPUT || '') || config.get('tokenCostOutput') || 15.0,
     systemPrompt: process.env.SYSTEM_PROMPT || config.get('systemPrompt'),
     saveDirectory: process.env.SAVE_DIRECTORY || config.get('saveDirectory'),
   };

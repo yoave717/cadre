@@ -5,6 +5,7 @@ import { marked } from 'marked';
 import TerminalRenderer from 'marked-terminal';
 import { Agent, HistoryItem } from '../agent/index.js';
 import { saveConversation } from '../commands/save.js';
+import { loadConversation, listConversations } from '../commands/load.js';
 import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
 import { getConfig } from '../config.js';
 
@@ -28,6 +29,10 @@ async function processPrompt(agent: Agent, prompt: string): Promise<string> {
       case 'context_compressed':
         spinner.info(chalk.yellow(`Context compressed: ${event.before} → ${event.after} tokens`));
         spinner.start('Thinking...');
+        break;
+
+      case 'usage_update':
+        // Usage updated silently
         break;
 
       case 'text_delta':
@@ -115,6 +120,7 @@ export const runSinglePrompt = async (prompt: string, systemPrompt?: string): Pr
 export const startInteractiveSession = async (
   initialPrompt?: string,
   systemPrompt?: string,
+  loadFilePath?: string,
 ): Promise<void> => {
   console.log(chalk.bold.blue('Welcome to Cadre'));
   console.log(chalk.dim('Type /help for commands, /exit to quit\n'));
@@ -129,6 +135,22 @@ export const startInteractiveSession = async (
   console.log(chalk.dim(`Model: ${config.modelName} | Endpoint: ${config.openaiBaseUrl}\n`));
 
   const agent = new Agent(systemPrompt);
+
+  // Load conversation if requested
+  if (loadFilePath) {
+    try {
+      const count = await loadConversation(agent, loadFilePath);
+      console.log(chalk.green(`Loaded conversation with ${count} messages.`));
+      console.log(chalk.dim('----------------------------------------'));
+      // Show last few messages for context
+      const history = agent.getHistory().filter((h) => h.role === 'user' || h.role === 'assistant');
+      printMessages(history.slice(-5));
+      console.log(chalk.dim('----------------------------------------'));
+    } catch (error) {
+      const err = error as Error;
+      console.log(chalk.red(`Failed to load conversation: ${err.message}`));
+    }
+  }
 
   // Process initial prompt if provided
   if (initialPrompt) {
@@ -152,7 +174,14 @@ export const startInteractiveSession = async (
   while (true) {
     try {
       const mode = multiLineHandler.getMode();
-      const promptStr = getModePrompt(mode);
+      let promptStr = getModePrompt(mode);
+
+      // Add token count to prompt if in normal mode
+      if (mode === 'normal') {
+        const usage = agent.getSessionUsage();
+        const tokens = usage.total.toLocaleString();
+        promptStr = `You (tokens: ${tokens}): `;
+      }
 
       const answer = await input({
         message: mode === 'normal' ? chalk.green(promptStr) : chalk.yellow(promptStr),
@@ -184,6 +213,27 @@ export const startInteractiveSession = async (
 
       await processPrompt(agent, result.content);
       console.log(''); // Extra line for readability
+
+      // Check limits
+      const config = getConfig();
+      if (config.maxSessionTokens > 0) {
+        const usage = agent.getSessionUsage();
+        const percent = (usage.total / config.maxSessionTokens) * 100;
+
+        if (percent >= 100) {
+          console.log(
+            chalk.red.bold(
+              `⚠ Session limit reached (${usage.total}/${config.maxSessionTokens} tokens).`,
+            ),
+          );
+        } else if (percent >= 80) {
+          console.log(
+            chalk.yellow(
+              `⚠ Approaching session limit: ${usage.total}/${config.maxSessionTokens} tokens (${percent.toFixed(1)}%)`,
+            ),
+          );
+        }
+      }
     } catch (error) {
       if (error instanceof Error && error.message.includes('User force closed')) {
         break;
@@ -228,7 +278,32 @@ async function handleSlashCommand(
       return true;
     }
 
-    case 'tokens':
+    case 'tokens': {
+      const usage = agent.getSessionUsage();
+      const config = getConfig();
+
+      console.log(chalk.bold('\nSession Token Usage:'));
+      console.log(chalk.dim(`  Input:      ${usage.input.toLocaleString()}`));
+      console.log(chalk.dim(`  Output:     ${usage.output.toLocaleString()}`));
+      console.log(chalk.blue(`  Total:      ${usage.total.toLocaleString()}`));
+
+      if (usage.cost > 0) {
+        console.log(chalk.dim(`  Est. Cost:  $${usage.cost.toFixed(4)}`));
+      }
+
+      if (config.maxSessionTokens > 0) {
+        const percent = (usage.total / config.maxSessionTokens) * 100;
+        const color = percent > 80 ? chalk.yellow : chalk.dim;
+        console.log(
+          color(
+            `  Limit:      ${usage.total.toLocaleString()} / ${config.maxSessionTokens.toLocaleString()} (${percent.toFixed(1)}%)`,
+          ),
+        );
+      }
+      console.log('');
+      return true;
+    }
+
     case 'context':
     case 'stats': {
       const stats = agent.getContextStats();
@@ -253,12 +328,42 @@ async function handleSlashCommand(
       console.log(chalk.dim('  /history [n] - View conversation history (default: all/paginated)'));
       console.log(chalk.dim('  /clear       - Clear conversation history'));
       console.log(chalk.dim('  /config      - Show current configuration'));
+      console.log(chalk.dim('  /tokens      - Show session token usage & cost'));
       console.log(chalk.dim('  /stats       - Show context/token statistics'));
       console.log(chalk.dim('  /exit        - Exit the session'));
+
       console.log(chalk.dim('  /system [prompt] - View or update system prompt'));
       console.log(chalk.dim('  /save [name] - Save conversation to file'));
+      console.log(chalk.dim('  /load [file] - Load conversation from file (or list available)'));
       console.log(chalk.dim('  /multi       - Enter multi-line input mode (end with /end)'));
       console.log(chalk.dim('  /help        - Show this help\n'));
+      return true;
+
+    case 'load':
+      if (args.length === 0 || args[0] === '--list') {
+        const files = listConversations();
+        if (files.length === 0) {
+          console.log(chalk.dim('No saved conversations found.'));
+        } else {
+          console.log(chalk.bold('\nSaved Conversations:'));
+          files.forEach((f) => console.log(chalk.blue(`  ${f}`)));
+          console.log('');
+        }
+        return true;
+      }
+
+      try {
+        // Confirm before overwriting current session?
+        // ideally yes, but for now let's just do it or maybe check if history is empty.
+        // user explicitly typed /load, so they probably know what they are doing.
+
+        const count = await loadConversation(agent, args[0]);
+        console.log(chalk.green(`Loaded conversation with ${count} messages.`));
+        console.log(chalk.dim('Context updated.'));
+      } catch (error) {
+        const err = error as Error;
+        console.log(chalk.red(`Error loading conversation: ${err.message}`));
+      }
       return true;
 
     case 'save':
