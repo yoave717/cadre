@@ -3,10 +3,9 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { marked } from 'marked';
 import TerminalRenderer from 'marked-terminal';
-import { Agent } from '../agent/index.js';
+import { Agent, HistoryItem } from '../agent/index.js';
 import { getConfig } from '../config.js';
 
-// Configure marked for terminal rendering
 // Configure marked for terminal rendering
 marked.setOptions({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -170,9 +169,11 @@ export const startInteractiveSession = async (initialPrompt?: string): Promise<v
 };
 
 async function handleSlashCommand(command: string, agent: Agent): Promise<boolean | 'exit'> {
-  const [cmd] = command.slice(1).split(' ');
+  const parts = command.slice(1).split(' ');
+  const cmd = parts[0].toLowerCase();
+  const args = parts.slice(1);
 
-  switch (cmd.toLowerCase()) {
+  switch (cmd) {
     case 'exit':
     case 'quit':
     case 'q':
@@ -220,16 +221,126 @@ async function handleSlashCommand(command: string, agent: Agent): Promise<boolea
     case 'help':
     case '?':
       console.log(chalk.bold('\nCommands:'));
-      console.log(chalk.dim('  /clear    - Clear conversation history'));
-      console.log(chalk.dim('  /config   - Show current configuration'));
-      console.log(chalk.dim('  /stats    - Show context/token statistics'));
-      console.log(chalk.dim('  /exit     - Exit the session'));
-      console.log(chalk.dim('  /help     - Show this help\n'));
+      console.log(chalk.dim('  /history [n] - View conversation history (default: all/paginated)'));
+      console.log(chalk.dim('  /clear       - Clear conversation history'));
+      console.log(chalk.dim('  /config      - Show current configuration'));
+      console.log(chalk.dim('  /stats       - Show context/token statistics'));
+      console.log(chalk.dim('  /exit        - Exit the session'));
+      console.log(chalk.dim('  /help        - Show this help\n'));
+      return true;
+
+    case 'history':
+    case 'log':
+      await showHistory(agent, args[0]);
       return true;
 
     default:
       console.log(chalk.yellow(`Unknown command: /${cmd}. Type /help for available commands.`));
       return true;
+  }
+}
+
+async function showHistory(agent: Agent, arg?: string): Promise<void> {
+  const allHistory = agent
+    .getHistory()
+    .filter((item) => item.role === 'user' || item.role === 'assistant');
+
+  if (allHistory.length === 0) {
+    console.log(chalk.dim('No history yet.'));
+    return;
+  }
+
+  const limit = arg ? parseInt(arg, 10) : 0;
+
+  if (limit > 0) {
+    // Show last N messages
+    const slice = allHistory.slice(-limit);
+    printMessages(slice);
+    return;
+  }
+
+  // Pagination logic if no limit and > 20 messages
+  const pageSize = 20;
+  if (allHistory.length <= pageSize) {
+    printMessages(allHistory);
+    return;
+  }
+
+  // Interactive pagination
+  let currentPage = 0; // 0 = most recent page
+  const totalPages = Math.ceil(allHistory.length / pageSize);
+
+  // We want to loop until user exits
+  // We need to dynamically import select to avoid issues if it's not at top level or use simple input
+  // For now, let's use a simple input loop to keep it robust
+
+  while (true) {
+    console.clear();
+    console.log(
+      chalk.bold(
+        `Conversation History (Page ${currentPage + 1}/${totalPages}) - ${allHistory.length} messages\n`,
+      ),
+    );
+
+    // Calculate slice for current page
+    // Page 0: last 20. Page 1: 20 before that.
+    // Index logic:
+    // Start index (inclusive) = total - (page + 1) * size
+    // End index (exclusive) = total - page * size
+    // Example: Total 50, Size 20.
+    // Page 0: Start 30, End 50. (Correct, last 20)
+    // Page 1: Start 10, End 30.
+    // Page 2: Start -10 -> 0, End 10.
+
+    let start = allHistory.length - (currentPage + 1) * pageSize;
+    let end = allHistory.length - currentPage * pageSize;
+
+    if (start < 0) start = 0;
+    if (end > allHistory.length) end = allHistory.length; // Should not happen with this math but safety
+
+    const pageMessages = allHistory.slice(start, end);
+    printMessages(pageMessages);
+
+    console.log(chalk.dim('\n----------------------------------------'));
+    console.log(chalk.dim(`Viewing ${start + 1}-${end} of ${allHistory.length} messages.`));
+
+    const options = [];
+    if (currentPage < totalPages - 1) options.push('[o]lder');
+    if (currentPage > 0) options.push('[n]ewer');
+    options.push('[q]uit');
+
+    const prompt = `Navigate (${options.join(', ')}): `;
+    const answer = await input({ message: prompt });
+
+    const choice = answer.trim().toLowerCase();
+
+    if (choice === 'q' || choice === 'exit' || choice === 'quit') {
+      break;
+    } else if ((choice === 'o' || choice === 'older') && currentPage < totalPages - 1) {
+      currentPage++;
+    } else if ((choice === 'n' || choice === 'newer') && currentPage > 0) {
+      currentPage--;
+    }
+  }
+}
+
+function printMessages(messages: HistoryItem[]) {
+  for (const item of messages) {
+    const date = new Date(item.timestamp || Date.now());
+    const timeStr = date.toISOString().replace('T', ' ').slice(0, 19);
+
+    const roleColor = item.role === 'user' ? chalk.green : chalk.magenta;
+    const roleName = item.role.toUpperCase();
+
+    console.log(chalk.dim(`[${timeStr}] `) + roleColor(roleName) + ':');
+
+    // Simple content rendering
+    if (item.content) {
+      console.log(item.content);
+    } else if ('tool_calls' in item && item.tool_calls) {
+      console.log(chalk.dim('(Tool calls hidden)'));
+    }
+    console.log(chalk.dim('---'));
   }
 }
 

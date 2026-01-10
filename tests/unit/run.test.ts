@@ -84,8 +84,8 @@ describe('Run Tools', () => {
       });
 
       // Emit events
-      mockChild.stdout.emit('data', 'chunk1');
-      mockChild.stdout.emit('data', 'chunk2');
+      (mockChild as any).stdout.emit('data', 'chunk1');
+      (mockChild as any).stdout.emit('data', 'chunk2');
       mockChild.emit('close', 0);
 
       const result = await outputPromise;

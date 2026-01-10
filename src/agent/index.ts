@@ -20,8 +20,10 @@ interface ToolCallAccumulator {
   arguments: string;
 }
 
+export type HistoryItem = ChatCompletionMessageParam & { timestamp: number };
+
 export class Agent {
-  private history: ChatCompletionMessageParam[] = [];
+  private history: HistoryItem[] = [];
 
   private contextManager: ContextManager;
 
@@ -41,17 +43,34 @@ Guidelines:
 - Be concise in your responses`;
 
   constructor() {
-    this.history.push({ role: 'system', content: this.systemPrompt });
+    this.history.push({
+      role: 'system',
+      content: this.systemPrompt,
+      timestamp: Date.now(),
+    });
     this.contextManager = getContextManager();
   }
 
   async *chat(userInput: string): AsyncGenerator<AgentEvent> {
-    this.history.push({ role: 'user', content: userInput });
+    this.history.push({
+      role: 'user',
+      content: userInput,
+      timestamp: Date.now(),
+    });
 
     // Check if context needs compression before making API call
     if (this.contextManager.needsCompression(this.history)) {
       const beforeTokens = estimateConversationTokens(this.history);
-      this.history = await this.contextManager.compressContext(this.history);
+      const compressed = await this.contextManager.compressContext(this.history);
+
+      // Ensure all messages have timestamps (summary messages created by compression won't)
+      this.history = compressed.map((msg) => {
+        if ('timestamp' in msg) {
+          return msg as HistoryItem;
+        }
+        return { ...(msg as object), timestamp: Date.now() } as HistoryItem;
+      });
+
       const afterTokens = estimateConversationTokens(this.history);
       yield { type: 'context_compressed', before: beforeTokens, after: afterTokens };
     }
@@ -65,7 +84,10 @@ Guidelines:
 
         const stream = await client.chat.completions.create({
           model: config.modelName,
-          messages: this.history,
+          // Strip timestamps for OpenAI API
+          messages: this.history.map(
+            ({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam,
+          ),
           tools: TOOLS,
           tool_choice: 'auto',
           stream: true,
@@ -74,7 +96,6 @@ Guidelines:
         let textContent = '';
         const toolCalls: ToolCallAccumulator[] = [];
 
-        // Process stream chunks
         // Process stream chunks
         for await (const chunk of stream) {
           const delta = chunk.choices[0]?.delta;
@@ -90,7 +111,6 @@ Guidelines:
             for (const toolCallDelta of delta.tool_calls) {
               const { index } = toolCallDelta;
 
-              // New tool call starting
               // New tool call starting
               if (toolCallDelta.id) {
                 toolCalls[index] = {
@@ -116,9 +136,10 @@ Guidelines:
 
         // Add assistant message to history
         if (textContent || toolCalls.length > 0) {
-          const assistantMessage: ChatCompletionMessageParam = {
+          const assistantMessage: HistoryItem = {
             role: 'assistant',
             content: textContent || null,
+            timestamp: Date.now(),
           };
 
           if (toolCalls.length > 0) {
@@ -132,7 +153,7 @@ Guidelines:
             }));
           }
 
-          this.history.push(assistantMessage);
+          this.history.push(assistantMessage as HistoryItem);
         }
 
         // Yield complete text if any
@@ -170,7 +191,8 @@ Guidelines:
               role: 'tool',
               tool_call_id: toolCall.id,
               content: truncatedResult,
-            });
+              timestamp: Date.now(),
+            } as HistoryItem);
           }
           // Loop back to send tool results to LLM
         } else {
@@ -186,11 +208,17 @@ Guidelines:
   }
 
   clearHistory() {
-    this.history = [{ role: 'system', content: this.systemPrompt }];
+    this.history = [
+      {
+        role: 'system',
+        content: this.systemPrompt,
+        timestamp: Date.now(),
+      },
+    ];
     this.contextManager.clearSummary();
   }
 
-  getHistory(): ChatCompletionMessageParam[] {
+  getHistory(): HistoryItem[] {
     return [...this.history];
   }
 
