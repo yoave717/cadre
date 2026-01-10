@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Agent } from '../../src/agent/index.js';
-import { getClient } from '../../src/client.js';
 
 // Mock client and config
 vi.mock('../../src/client.js', () => ({

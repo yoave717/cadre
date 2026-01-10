@@ -54,11 +54,11 @@ Found foo in bar.ts
 `;
     const history = parseConversation(markdown);
     expect(history).toHaveLength(2);
-    
+
     // Assistant with tool call
     const assistant = history[0];
     expect(assistant.role).toBe('assistant');
-    
+
     expect(assistant.tool_calls).toBeDefined();
     expect(assistant.tool_calls![0].function.name).toBe('grep_search');
     const args = JSON.parse(assistant.tool_calls![0].function.arguments);

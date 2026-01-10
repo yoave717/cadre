@@ -45,6 +45,9 @@ Your goal is to deliver a complete, working, and tested solution that meets all 
     - Run `npm test` to ensure no regressions.
     - Create new test cases as required by the DoD.
     - Verify the feature manually if it's a UI change.
+5.  **Document**:
+    - Update relevant documentation. (e.g. README, API docs, etc.)
+    - Add comments to code as needed.
 
 ---
 

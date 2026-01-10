@@ -1,4 +1,5 @@
-import { input } from '@inquirer/prompts';
+// import { input } from '@inquirer/prompts'; // Replaced by LineEditor
+import { LineEditor } from '../input/line-editor.js';
 import chalk from 'chalk';
 import ora from 'ora';
 import { marked } from 'marked';
@@ -8,6 +9,7 @@ import { saveConversation } from '../commands/save.js';
 import { loadConversation, listConversations } from '../commands/load.js';
 import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
 import { getConfig } from '../config.js';
+import { BranchManager } from '../context/branch-manager.js';
 
 // Configure marked for terminal rendering
 marked.setOptions({
@@ -19,77 +21,88 @@ marked.setOptions({
  * Process a single prompt and stream the response.
  * Returns the full response text.
  */
-async function processPrompt(agent: Agent, prompt: string): Promise<string> {
+async function processPrompt(agent: Agent, prompt: string, signal?: AbortSignal): Promise<string> {
   const spinner = ora({ text: 'Thinking...', color: 'cyan' }).start();
   let isStreaming = false;
   let fullText = '';
 
-  for await (const event of agent.chat(prompt)) {
-    switch (event.type) {
-      case 'context_compressed':
-        spinner.info(chalk.yellow(`Context compressed: ${event.before} → ${event.after} tokens`));
-        spinner.start('Thinking...');
-        break;
+  try {
+    for await (const event of agent.chat(prompt, signal)) {
+      if (signal?.aborted) break;
+      switch (event.type) {
+        case 'context_compressed':
+          spinner.info(chalk.yellow(`Context compressed: ${event.before} → ${event.after} tokens`));
+          spinner.start('Thinking...');
+          break;
 
-      case 'usage_update':
-        // Usage updated silently
-        break;
+        case 'usage_update':
+          // Usage updated silently
+          break;
 
-      case 'text_delta':
-        // First chunk - stop spinner and start streaming
-        if (!isStreaming) {
-          spinner.stop();
-          isStreaming = true;
-        }
-        // Write directly to stdout for real-time streaming
-        process.stdout.write(event.content);
-        fullText += event.content;
-        break;
+        case 'text_delta':
+          // First chunk - stop spinner and start streaming
+          if (!isStreaming) {
+            spinner.stop();
+            isStreaming = true;
+          }
+          // Write directly to stdout for real-time streaming
+          process.stdout.write(event.content);
+          fullText += event.content;
+          break;
 
-      case 'text_done':
-        // Add newline after streamed text
-        if (isStreaming) {
-          console.log('');
-        }
-        isStreaming = false;
-        break;
-
-      case 'tool_call_start':
-        if (isStreaming) {
-          console.log('');
+        case 'text_done':
+          // Add newline after streamed text
+          if (isStreaming) {
+            console.log('');
+          }
           isStreaming = false;
-        }
-        spinner.start(chalk.blue(`⚡ ${event.name}`));
-        break;
+          break;
 
-      case 'tool_call':
-        spinner.text = chalk.blue(`⚡ ${event.name}`) + chalk.dim(` ${formatArgs(event.args)}`);
-        break;
+        case 'tool_call_start':
+          if (isStreaming) {
+            console.log('');
+            isStreaming = false;
+          }
+          spinner.start(chalk.blue(`⚡ ${event.name}`));
+          break;
 
-      case 'tool_result': {
-        spinner.succeed(chalk.blue(`⚡ ${event.name}`) + chalk.green(' ✓'));
-        // Show truncated result for context
-        const preview = event.result.slice(0, 200);
-        if (event.result.length > 200) {
-          console.log(chalk.dim(`   ${preview}...`));
-        } else if (preview.trim()) {
-          console.log(chalk.dim(`   ${preview}`));
+        case 'tool_call':
+          spinner.text = chalk.blue(`⚡ ${event.name}`) + chalk.dim(` ${formatArgs(event.args)}`);
+          break;
+
+        case 'tool_result': {
+          spinner.succeed(chalk.blue(`⚡ ${event.name}`) + chalk.green(' ✓'));
+          // Show truncated result for context
+          const preview = event.result.slice(0, 200);
+          if (event.result.length > 200) {
+            console.log(chalk.dim(`   ${preview}...`));
+          } else if (preview.trim()) {
+            console.log(chalk.dim(`   ${preview}`));
+          }
+          spinner.start('Thinking...');
+          break;
         }
-        spinner.start('Thinking...');
-        break;
+
+        case 'turn_done':
+          spinner.stop();
+          break;
+
+        case 'error':
+          spinner.fail(chalk.red(`Error: ${event.message}`));
+          break;
+
+        default:
+          break;
       }
-
-      case 'turn_done':
-        spinner.stop();
-        break;
-
-      case 'error':
-        spinner.fail(chalk.red(`Error: ${event.message}`));
-        break;
-
-      default:
-        break;
     }
+  } catch (error) {
+    if (signal?.aborted || (error as Error).name === 'AbortError') {
+      spinner.stop();
+      if (isStreaming) console.log(''); // Close line if streaming
+      console.log(chalk.yellow('^C'));
+      return fullText;
+    }
+    throw error;
   }
 
   spinner.stop();
@@ -170,6 +183,11 @@ export const startInteractiveSession = async (
   // Interactive loop
 
   const multiLineHandler = new MultiLineHandler();
+  const lineEditor = new LineEditor();
+
+  const branchManager = new BranchManager();
+  let currentBranch: string | null = null;
+  let lastSigIntTime = 0;
 
   while (true) {
     try {
@@ -180,30 +198,37 @@ export const startInteractiveSession = async (
       if (mode === 'normal') {
         const usage = agent.getSessionUsage();
         const tokens = usage.total.toLocaleString();
-        promptStr = `You (tokens: ${tokens}): `;
+
+        const branchStr = currentBranch ? ` [${chalk.cyan(currentBranch)}]` : '';
+        promptStr = `You${branchStr} (tokens: ${tokens}): `;
       }
 
-      const answer = await input({
-        message: mode === 'normal' ? chalk.green(promptStr) : chalk.yellow(promptStr),
-      });
+      const answer = await lineEditor.read(
+        mode === 'normal' ? chalk.green(promptStr) : chalk.yellow(promptStr),
+      );
 
       // Pass to multi-line handler
       const result = multiLineHandler.processLine(answer);
 
-      // If in explicit mode (multi-line), we don't process commands unless it's /cancel handled inside handler (or we trap it here)
-      // Actually we need to handle /multi separately if we are in normal mode.
-
       if (!result.complete) {
-        // If we just entered a mode or are continuing in a mode, we loop back
-        // Check if we need to print anything? Inquirer handles echo.
         continue;
       }
 
       const trimmed = result.content.trim();
 
-      // Handle slash commands (only in normal mode, effectively, since processLine returns complete=true for /end)
+      // Handle slash commands (only in normal mode)
       if (trimmed.startsWith('/') && multiLineHandler.getMode() === 'normal') {
-        const handled = await handleSlashCommand(trimmed, agent, multiLineHandler);
+        const handled = await handleSlashCommand(
+          trimmed,
+          agent,
+          multiLineHandler,
+          branchManager,
+          lineEditor,
+          currentBranch,
+          (newBranch) => {
+            currentBranch = newBranch;
+          },
+        );
         if (handled === 'exit') break;
         if (handled) continue;
       }
@@ -211,8 +236,33 @@ export const startInteractiveSession = async (
       // Skip empty input
       if (!trimmed) continue;
 
-      await processPrompt(agent, result.content);
-      console.log(''); // Extra line for readability
+      // Create a fresh abort controller for this turn
+      const abortController = new AbortController();
+
+      // Setup SIGINT handler for agent execution
+      const onSigInt = () => {
+        const now = Date.now();
+        if (now - lastSigIntTime < 1000) {
+          console.log('\nGoodbye!');
+          process.exit(0);
+        }
+        lastSigIntTime = now;
+        abortController.abort();
+      };
+
+      process.on('SIGINT', onSigInt);
+
+      try {
+        await processPrompt(agent, result.content, abortController.signal);
+        console.log(''); // Extra line for readability
+      } finally {
+        process.off('SIGINT', onSigInt);
+      }
+
+      // Auto-save branch if active
+      if (currentBranch) {
+        await branchManager.saveBranch(currentBranch, agent.getHistory());
+      }
 
       // Check limits
       const config = getConfig();
@@ -236,7 +286,16 @@ export const startInteractiveSession = async (
       }
     } catch (error) {
       if (error instanceof Error && error.message.includes('User force closed')) {
-        break;
+        // Handle Ctrl+C during input
+        const now = Date.now();
+        if (now - lastSigIntTime < 1000) {
+          console.log('\nGoodbye!');
+          process.exit(0);
+        }
+        lastSigIntTime = now;
+        console.log('^C');
+        multiLineHandler.cancel();
+        continue;
       }
       console.error(chalk.red('Error:'), error);
     }
@@ -247,6 +306,10 @@ async function handleSlashCommand(
   command: string,
   agent: Agent,
   multiLineHandler: MultiLineHandler,
+  branchManager: BranchManager,
+  lineEditor: LineEditor,
+  currentBranch: string | null,
+  setBranch: (name: string | null) => void,
 ): Promise<boolean | 'exit'> {
   const parts = command.slice(1).split(' ');
   const cmd = parts[0].toLowerCase();
@@ -339,6 +402,55 @@ async function handleSlashCommand(
       console.log(chalk.dim('  /help        - Show this help\n'));
       return true;
 
+    case 'branch':
+      if (args.length === 0) {
+        if (currentBranch) {
+          console.log(chalk.blue(`Current branch: ${currentBranch}`));
+        } else {
+          console.log(chalk.dim('No active branch (main conversation).'));
+        }
+        return true;
+      }
+
+      if (args[0] === '--list' || args[0] === '-l') {
+        const branches = await branchManager.listBranches();
+        if (branches.length === 0) {
+          console.log(chalk.dim('No branches found.'));
+        } else {
+          console.log(chalk.bold('\nBranches:'));
+          for (const b of branches) {
+            const isCurrent = b.name === currentBranch;
+            const marker = isCurrent ? chalk.green('*') : ' ';
+            const date = new Date(b.lastModified).toISOString().slice(0, 10);
+            console.log(
+              `${marker} ${chalk.blue(b.name.padEnd(20))} ${chalk.dim(`${b.messageCount} msgs`)} ${chalk.dim(date)}`,
+            );
+          }
+          console.log('');
+        }
+        return true;
+      }
+
+      // Create new branch
+      try {
+        const newBranchName = args[0];
+
+        // If it exists, error (per requirements "create")
+        // But for better UX, if it exists and user might want to switch?
+        // Requirements say: "As a user, I can create named conversation branches"
+        // And "User can type /branch new-feature to create branch"
+        // I will strictly implement create.
+        // We can add switch later if needed, or if user asks.
+
+        await branchManager.createBranch(newBranchName, agent.getHistory());
+        setBranch(newBranchName);
+        console.log(chalk.green(`Created and switched to branch '${newBranchName}'`));
+      } catch (error) {
+        const err = error as Error;
+        console.log(chalk.red(`Error: ${err.message}`));
+      }
+      return true;
+
     case 'load':
       if (args.length === 0 || args[0] === '--list') {
         const files = listConversations();
@@ -407,7 +519,7 @@ async function handleSlashCommand(
 
     case 'history':
     case 'log':
-      await showHistory(agent, args[0]);
+      await showHistory(agent, lineEditor, args[0]);
       return true;
 
     default:
@@ -416,7 +528,7 @@ async function handleSlashCommand(
   }
 }
 
-async function showHistory(agent: Agent, arg?: string): Promise<void> {
+async function showHistory(agent: Agent, lineEditor: LineEditor, arg?: string): Promise<void> {
   const allHistory = agent
     .getHistory()
     .filter((item) => item.role === 'user' || item.role === 'assistant');
@@ -446,10 +558,6 @@ async function showHistory(agent: Agent, arg?: string): Promise<void> {
   let currentPage = 0; // 0 = most recent page
   const totalPages = Math.ceil(allHistory.length / pageSize);
 
-  // We want to loop until user exits
-  // We need to dynamically import select to avoid issues if it's not at top level or use simple input
-  // For now, let's use a simple input loop to keep it robust
-
   while (true) {
     console.clear();
     console.log(
@@ -458,21 +566,11 @@ async function showHistory(agent: Agent, arg?: string): Promise<void> {
       ),
     );
 
-    // Calculate slice for current page
-    // Page 0: last 20. Page 1: 20 before that.
-    // Index logic:
-    // Start index (inclusive) = total - (page + 1) * size
-    // End index (exclusive) = total - page * size
-    // Example: Total 50, Size 20.
-    // Page 0: Start 30, End 50. (Correct, last 20)
-    // Page 1: Start 10, End 30.
-    // Page 2: Start -10 -> 0, End 10.
-
     let start = allHistory.length - (currentPage + 1) * pageSize;
     let end = allHistory.length - currentPage * pageSize;
 
     if (start < 0) start = 0;
-    if (end > allHistory.length) end = allHistory.length; // Should not happen with this math but safety
+    if (end > allHistory.length) end = allHistory.length;
 
     const pageMessages = allHistory.slice(start, end);
     printMessages(pageMessages);
@@ -486,7 +584,7 @@ async function showHistory(agent: Agent, arg?: string): Promise<void> {
     options.push('[q]uit');
 
     const prompt = `Navigate (${options.join(', ')}): `;
-    const answer = await input({ message: prompt });
+    const answer = await lineEditor.read(prompt);
 
     const choice = answer.trim().toLowerCase();
 

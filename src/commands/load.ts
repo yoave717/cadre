@@ -23,14 +23,12 @@ export function parseConversation(content: string): HistoryItem[] {
   let currentRole: string | null = null;
   let currentTimestamp: number = Date.now();
   let currentContent: string[] = [];
-  let isToolOutput = false;
-  let isToolCall = false;
 
   const flushMessage = () => {
     if (!currentRole) return;
 
     // Join lines and clean up
-    let text = currentContent.join('\n').trim();
+    const text = currentContent.join('\n').trim();
 
     if (currentRole === 'TOOL' || currentRole === 'TOOL OUTPUT') {
       // Trying to reconstruct tool output
@@ -98,8 +96,6 @@ export function parseConversation(content: string): HistoryItem[] {
 
     currentContent = [];
     currentRole = null;
-    isToolOutput = false;
-    isToolCall = false;
   };
 
   while (i < lines.length) {

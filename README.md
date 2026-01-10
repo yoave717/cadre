@@ -10,6 +10,7 @@ Cadre is a Claude Code-like AI Coding Assistant CLI that provides an intelligent
 - **Context Compression** - Automatic summarization for long conversations
 - **Permission System** - Per-project permissions with "remember" option
 - **Multi-model Support** - OpenAI, vLLM, Together, Qwen, and other OpenAI-compatible APIs
+- **Conversation Branching** - Create named branches to experiment with multiple solutions
 - **Cross-platform** - Works on Mac, Linux, and Windows
 
 ## Installation
@@ -106,6 +107,7 @@ cadre --model gpt-4-turbo "review this code"
 | Command   | Description                   |
 | --------- | ----------------------------- |
 | `/help`   | Show available commands       |
+| `/branch` | Manage conversation branches  |
 | `/clear`  | Clear conversation history    |
 | `/stats`  | Show context/token statistics |
 | `/config` | Show current configuration    |

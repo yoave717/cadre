@@ -31,14 +31,12 @@ export interface TokenUsage {
 
 export type HistoryItem = ChatCompletionMessageParam & { timestamp: number };
 
-
 export class Agent {
   private history: HistoryItem[] = [];
 
   private sessionUsage: TokenUsage = { input: 0, output: 0, total: 0, cost: 0 };
 
   private contextManager: ContextManager;
-
 
   private systemPrompt: string = `You are Cadre, a helpful AI coding assistant running in a CLI environment.
 
@@ -95,7 +93,7 @@ Guidelines:
     return this.systemPrompt;
   }
 
-  async *chat(userInput: string): AsyncGenerator<AgentEvent> {
+  async *chat(userInput: string, signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     this.history.push({
       role: 'user',
       content: userInput,
@@ -126,18 +124,20 @@ Guidelines:
       while (true) {
         // Use streaming API
 
-        const stream = await client.chat.completions.create({
-          model: config.modelName,
-          // Strip timestamps for OpenAI API
-          messages: this.history.map(
-            ({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam,
-          ),
-          tools: TOOLS,
-          tool_choice: 'auto',
-          stream: true,
-          stream_options: { include_usage: true },
-        });
-
+        const stream = await client.chat.completions.create(
+          {
+            model: config.modelName,
+            // Strip timestamps for OpenAI API
+            messages: this.history.map(
+              ({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam,
+            ),
+            tools: TOOLS,
+            tool_choice: 'auto',
+            stream: true,
+            stream_options: { include_usage: true },
+          },
+          { signal },
+        );
 
         let textContent = '';
         const toolCalls: ToolCallAccumulator[] = [];
@@ -161,7 +161,6 @@ Guidelines:
           }
 
           const delta = chunk.choices[0]?.delta;
-
 
           // Handle text content streaming
           if (delta?.content) {
@@ -282,7 +281,6 @@ Guidelines:
     this.sessionUsage = { input: 0, output: 0, total: 0, cost: 0 };
   }
 
-
   getHistory(): HistoryItem[] {
     return [...this.history];
   }
@@ -299,7 +297,6 @@ Guidelines:
     return { ...this.sessionUsage };
   }
 
-
   loadHistory(history: HistoryItem[]) {
     // Validate history
     if (!Array.isArray(history) || history.length === 0) {
@@ -307,12 +304,12 @@ Guidelines:
     }
 
     this.history = history;
-    
+
     // Reset context summary if any (assume loaded history is full/raw for now, or re-summarize later if needed)
     this.contextManager.clearSummary();
 
     // Ensure system prompt is synced if present in history
-    const systemMsg = this.history.find(h => h.role === 'system');
+    const systemMsg = this.history.find((h) => h.role === 'system');
     if (systemMsg && systemMsg.content) {
       this.systemPrompt = systemMsg.content as string;
     }
