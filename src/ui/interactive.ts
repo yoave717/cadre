@@ -8,6 +8,7 @@ import { Agent, HistoryItem } from '../agent/index.js';
 import { saveConversation } from '../commands/save.js';
 import { loadConversation, listConversations } from '../commands/load.js';
 import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
+import { TaskCoordinator } from '../workers/index.js';
 
 /**
  * Display a cool CLI entrance banner
@@ -40,6 +41,36 @@ marked.setOptions({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   renderer: new TerminalRenderer() as any,
 });
+
+/**
+ * Process a prompt using multi-worker execution
+ */
+async function processWithMultiWorker(
+  prompt: string,
+  coordinator: TaskCoordinator,
+): Promise<string> {
+  const summary = await coordinator.execute(prompt);
+
+  // Display the summary
+  console.log(coordinator.formatSummary(summary));
+
+  // Aggregate results
+  const successfulResults = summary.results.filter((r) => r.success && r.result);
+  if (successfulResults.length > 0) {
+    console.log(chalk.bold('\n📝 Aggregated Results:\n'));
+    for (const result of successfulResults) {
+      const task = summary.plan.subtasks.find((t) => t.id === result.taskId);
+      if (task) {
+        console.log(chalk.cyan(`Task: ${task.description}`));
+        console.log(result.result);
+        console.log(chalk.dim('---\n'));
+      }
+    }
+  }
+
+  // Return combined results
+  return successfulResults.map((r) => r.result).join('\n\n');
+}
 
 /**
  * Process a single prompt and stream the response.
@@ -172,6 +203,14 @@ export const startInteractiveSession = async (
 
   const agent = new Agent(systemPrompt);
 
+  // Initialize multi-worker coordinator
+  const coordinator = new TaskCoordinator({
+    maxWorkers: 4, // Configure based on system resources
+    enableSharedContext: true,
+    verbose: true,
+    onProgress: (message) => console.log(message),
+  });
+
   // Load conversation if requested
   if (loadFilePath) {
     try {
@@ -291,6 +330,7 @@ export const startInteractiveSession = async (
           (newBranch) => {
             currentBranch = newBranch;
           },
+          coordinator,
         );
         if (handled === 'exit') break;
         if (handled) continue;
@@ -366,6 +406,9 @@ export const startInteractiveSession = async (
       console.error(chalk.red('Error:'), error);
     }
   }
+
+  // Cleanup on exit
+  coordinator.shutdown();
 };
 
 async function handleSlashCommand(
@@ -377,6 +420,7 @@ async function handleSlashCommand(
   lineEditor: LineEditor,
   currentBranch: string | null,
   setBranch: (name: string | null) => void,
+  coordinator?: TaskCoordinator,
 ): Promise<boolean | 'exit'> {
   const parts = command.slice(1).split(' ');
   const cmd = parts[0].toLowerCase();
@@ -468,6 +512,8 @@ async function handleSlashCommand(
       console.log(chalk.dim('  /branch [name] - Create a new branch or show current branch'));
       console.log(chalk.dim('  /checkout <name> - Switch to a different branch'));
       console.log(chalk.dim('  /multi       - Enter multi-line input mode (end with /end)'));
+      console.log(chalk.dim('  /parallel <prompt> - Execute task with multiple workers'));
+      console.log(chalk.dim('  /workers     - Show worker pool status'));
       console.log(chalk.dim('  /help        - Show this help\n'));
       return true;
 
@@ -638,6 +684,51 @@ async function handleSlashCommand(
     case 'log':
       await showHistory(agent, lineEditor, args[0]);
       return true;
+
+    case 'parallel':
+      if (!coordinator) {
+        console.log(chalk.red('Error: Multi-worker system not initialized.'));
+        return true;
+      }
+      if (args.length === 0) {
+        console.log(chalk.yellow('Usage: /parallel <your task description>'));
+        console.log(
+          chalk.dim('Example: /parallel Refactor the authentication module and update tests'),
+        );
+        return true;
+      }
+
+      try {
+        const parallelPrompt = args.join(' ');
+        await processWithMultiWorker(parallelPrompt, coordinator);
+      } catch (error) {
+        const err = error as Error;
+        console.log(chalk.red(`Error executing parallel tasks: ${err.message}`));
+      }
+      return true;
+
+    case 'workers': {
+      if (!coordinator) {
+        console.log(chalk.red('Error: Multi-worker system not initialized.'));
+        return true;
+      }
+
+      const stats = coordinator.getStats();
+      console.log(chalk.bold('\n👷 Worker Pool Status:\n'));
+      console.log(chalk.dim(`  Total Workers:     ${stats.total}`));
+      console.log(chalk.dim(`  Idle:              ${chalk.green(stats.idle.toString())}`));
+      console.log(chalk.dim(`  Busy:              ${chalk.yellow(stats.busy.toString())}`));
+      console.log(
+        chalk.dim(
+          `  Error:             ${stats.error > 0 ? chalk.red(stats.error.toString()) : '0'}`,
+        ),
+      );
+      console.log(chalk.dim(`  Stopped:           ${stats.stopped}`));
+      console.log(chalk.dim(`  Tasks Completed:   ${stats.totalTasksCompleted}`));
+      console.log(chalk.dim(`  Total Errors:      ${stats.totalErrors}`));
+      console.log('');
+      return true;
+    }
 
     default:
       console.log(chalk.yellow(`Unknown command: /${cmd}. Type /help for available commands.`));
