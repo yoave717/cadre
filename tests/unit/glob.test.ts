@@ -4,6 +4,9 @@ import path from 'path';
 import * as glob from '../../src/tools/glob';
 
 vi.mock('fs/promises');
+vi.mock('../../src/tools/index', () => ({
+  getAllFilePaths: vi.fn().mockResolvedValue([]),
+}));
 
 describe('Glob Tools', () => {
   beforeEach(() => {

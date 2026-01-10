@@ -85,7 +85,33 @@ export const readFile = async (
 
     return lines.join('\n');
   } catch (error) {
-    const err = error as Error;
+    const err = error as Error & { code?: string };
+
+    // Smart Resolution: If file not found, try to find it in the index
+    if (err.code === 'ENOENT') {
+      try {
+        // Dynamic import to avoid circular dependency
+        const { findFilesByName } = await import('./index.js');
+        const basename = path.basename(filePath);
+
+        // Only attempt resolution if input looks like a filename (not just a directory or empty)
+        if (basename && basename !== '.' && basename !== '..') {
+          const matches = await findFilesByName(basename);
+
+          if (matches.length === 1) {
+            // Unique match found! Auto-resolve.
+            const resolvedPath = matches[0];
+            const autoContent = await readFile(resolvedPath, offset, limit);
+            return `(Auto-resolved to ${resolvedPath})\n${autoContent}`;
+          } else if (matches.length > 1) {
+            return `File not found: ${filePath}\nDid you mean one of these?\n${matches.map((m) => `  - ${m}`).join('\n')}`;
+          }
+        }
+      } catch (indexErr) {
+        // Ignore index errors, fallback to original error
+      }
+    }
+
     return `Error reading file: ${err.message}`;
   }
 };
@@ -127,6 +153,16 @@ export const writeFile = async (
 
     // Track the file as read now
     readFiles.add(absolutePath);
+
+    // Update index if applicable
+    try {
+      const { updateFileIndex } = await import('./index.js');
+      await updateFileIndex(absolutePath);
+    } catch (error) {
+      // Ignore indexing errors (don't fail the write)
+      const err = error as Error;
+      // We might want to log this but for now silently ignore to avoid noise in tool output
+    }
 
     const lines = content.split('\n').length;
     return `Successfully wrote ${lines} lines to ${filePath}`;

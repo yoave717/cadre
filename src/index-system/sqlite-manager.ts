@@ -110,26 +110,21 @@ export class SqliteIndexManager {
   }
 
   /**
-   * Import a JSON index into SQLite
+   * Set a metadata value
    */
-  importFromJSON(index: ProjectIndex): void {
-    const transaction = this.db.transaction(() => {
-      // Clear existing data
-      this.db.exec('DELETE FROM files');
-      this.db.exec('DELETE FROM metadata');
+  setMetadata(key: string, value: string): void {
+    const stmt = this.db.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)');
+    stmt.run(key, value);
+  }
 
-      // Store metadata
-      const setMeta = this.db.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)');
-      setMeta.run('version', index.version.toString());
-      setMeta.run('project_root', index.projectRoot);
-      setMeta.run('indexed_at', index.indexed_at.toString());
-      setMeta.run('total_files', index.totalFiles.toString());
-      setMeta.run('total_symbols', index.totalSymbols.toString());
-
-      this.insertBatchInternal(index.files);
-    });
-
-    transaction();
+  /**
+   * Get a metadata value
+   */
+  getMetadata(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM metadata WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
+    return row ? row.value : null;
   }
 
   /**
@@ -285,6 +280,46 @@ export class SqliteIndexManager {
   }
 
   /**
+   * Find files by glob pattern
+   */
+  globFiles(pattern: string, limit: number = 1000): string[] {
+    // Note: SQLite GLOB is UNIX-style case sensitive.
+    // Standard glob patterns usually use ** for recursive matching, but SQLite GLOB * matches path separators
+    // so it effectively acts recursively (like **) unless restricted.
+    // This provides a reasonable approximation for finding files.
+
+    const stmt = this.db.prepare(`
+      SELECT path
+      FROM files
+      WHERE path GLOB ?
+      ORDER BY path
+      LIMIT ?
+    `);
+
+    const rows = stmt.all(pattern, limit) as Array<{ path: string }>;
+    return rows.map((row) => row.path);
+  }
+
+  /**
+   * Find files by exact filename or path suffix
+   */
+  findFilesByName(filename: string, limit: number = 10): string[] {
+    const stmt = this.db.prepare(`
+      SELECT path
+      FROM files
+      WHERE path = ? OR path LIKE ?
+      ORDER BY path
+      LIMIT ?
+    `);
+
+    // Check exact match or suffix match (ending with /filename)
+    // Note: path is stored as relative path usually.
+    const suffix = `%/${filename}`;
+    const rows = stmt.all(filename, suffix, limit) as Array<{ path: string }>;
+    return rows.map((row) => row.path);
+  }
+
+  /**
    * Get symbols in a file
    */
   getFileSymbols(filePath: string): Symbol[] {
@@ -329,6 +364,47 @@ export class SqliteIndexManager {
 
     const rows = stmt.all(`%${moduleName}%`) as Array<{ path: string }>;
     return rows.map((row) => row.path);
+  }
+
+  /**
+   * Get all files with metadata (for incremental updates)
+   */
+  getAllFiles(): Array<{ path: string; absolutePath: string; mtime: number; hash: string }> {
+    const stmt = this.db.prepare(`
+      SELECT path, absolute_path, mtime, hash
+      FROM files
+    `);
+
+    const rows = stmt.all() as Array<{
+      path: string;
+      absolute_path: string;
+      mtime: number;
+      hash: string;
+    }>;
+
+    return rows.map((row) => ({
+      path: row.path,
+      absolutePath: row.absolute_path,
+      mtime: row.mtime,
+      hash: row.hash,
+    }));
+  }
+
+  /**
+   * Get all file paths (for globbing)
+   */
+  getAllPaths(): string[] {
+    const stmt = this.db.prepare('SELECT path FROM files ORDER BY path');
+    const rows = stmt.all() as Array<{ path: string }>;
+    return rows.map((r) => r.path);
+  }
+
+  /**
+   * Delete a file from the index
+   */
+  deleteFile(path: string): void {
+    // Cascading deletes will handle symbols, imports, exports
+    this.db.prepare('DELETE FROM files WHERE path = ?').run(path);
   }
 
   /**

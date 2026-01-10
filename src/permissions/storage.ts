@@ -2,13 +2,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-export type PermissionType = 'bash' | 'write' | 'edit' | 'delete';
+export type PermissionType = 'bash' | 'write' | 'edit' | 'delete' | 'read';
 
 export interface ProjectPermissions {
   bash?: boolean;
   write?: boolean;
   edit?: boolean;
   delete?: boolean;
+  read?: boolean;
   granted_at: string;
 }
 

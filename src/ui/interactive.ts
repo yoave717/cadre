@@ -10,30 +10,42 @@ import { saveConversation } from '../commands/save.js';
 import { loadConversation, listConversations } from '../commands/load.js';
 import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
 import { WorkerStatusRenderer } from './worker-renderer.js';
-import { TaskCoordinator } from '../workers/task-coordinator.js';
 import { getConfig } from '../config.js';
 import { BranchManager } from '../context/branch-manager.js';
 import { SessionManager } from '../context/session-manager.js';
+import { TaskCoordinator } from '../workers/index.js';
+import {
+  theme,
+  formatSuccess,
+  formatError,
+  formatInfo,
+  formatWarning,
+  formatProgress,
+  formatSeparator,
+  formatTimestamp,
+  formatRole,
+} from './colors.js';
 
 /**
  * Display a cool CLI entrance banner
  */
 function displayBanner(): void {
   const banner = `
-   ${chalk.cyan('╔═══════════════════════════════════════════════════════╗')}
-   ${chalk.cyan('║')}                                                       ${chalk.cyan('║')}
-   ${chalk.cyan('║')}      ${chalk.bold.blue('█████╗  █████╗ ██████╗ ██████╗ ███████╗')}     ${chalk.cyan('║')}
-   ${chalk.cyan('║')}     ${chalk.bold.blue('██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔════╝')}     ${chalk.cyan('║')}
-   ${chalk.cyan('║')}     ${chalk.bold.blue('██║  ╚═╝███████║██║  ██║██████╔╝█████╗')}       ${chalk.cyan('║')}
-   ${chalk.cyan('║')}     ${chalk.bold.blue('██║  ██╗██╔══██║██║  ██║██╔══██╗██╔══╝')}       ${chalk.cyan('║')}
-   ${chalk.cyan('║')}     ${chalk.bold.blue('╚█████╔╝██║  ██║██████╔╝█████╗')}     ${chalk.cyan('║')}
-   ${chalk.cyan('║')}      ${chalk.bold.blue('╚════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝')}     ${chalk.cyan('║')}
-   ${chalk.cyan('║')}                                                       ${chalk.cyan('║')}
-   ${chalk.cyan('║')}          ${chalk.dim('Your AI-Powered Development Assistant')}         ${chalk.cyan('║')}
-   ${chalk.cyan('║')}                                                       ${chalk.cyan('║')}
-   ${chalk.cyan('╚═══════════════════════════════════════════════════════╝')}
+   ${theme.border('╔═══════════════════════════════════════════════════════╗')}
+   ${theme.border('║')}                                                       ${theme.border('║')}
+   ${theme.border('║')}        ${theme.emphasis('█████╗  █████╗ ██████╗ ██████╗ ███████╗')}        ${theme.border('║')}
+   ${theme.border('║')}       ${theme.emphasis('██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔════╝')}        ${theme.border('║')}
+   ${theme.border('║')}       ${theme.emphasis('██║  ╚═╝███████║██║  ██║██████╔╝█████╗')}          ${theme.border('║')}
+   ${theme.border('║')}       ${theme.emphasis('██║  ██╗██╔══██║██║  ██║██╔══██╗██╔══╝')}          ${theme.border('║')}
+   ${theme.border('║')}       ${theme.emphasis('╚█████╔╝██║  ██║██████╔╝██║  ██║███████╗')}        ${theme.border('║')}
+   ${theme.border('║')}        ${theme.emphasis('╚════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝')}        ${theme.border('║')}
+   ${theme.border('║')}                                                       ${theme.border('║')}
+   ${theme.border('║')}          ${theme.dim('Your AI-Powered Development Co-Partner')}       ${theme.border('║')}
+   ${theme.border('║')}                                                       ${theme.border('║')}
+   ${theme.border('╚═══════════════════════════════════════════════════════╝')}
 
-   ${chalk.dim('Type')} ${chalk.green('/help')} ${chalk.dim('for commands ·')} ${chalk.green('/exit')} ${chalk.dim('to quit')}
+   
+   ${theme.dim('Type')} ${theme.userInput('/help')} ${theme.dim('for commands ·')} ${theme.userInput('/exit')} ${theme.dim('to quit')}
 `;
   console.log(banner);
 }
@@ -72,13 +84,13 @@ async function processWithMultiWorker(
     // Aggregate results
     const successfulResults = summary.results.filter((r) => r.success && r.result);
     if (successfulResults.length > 0) {
-      console.log(chalk.bold('\n📝 Aggregated Results:\n'));
+      console.log(theme.emphasis('\n📝 Aggregated Results:\n'));
       for (const result of successfulResults) {
         const task = summary.plan.subtasks.find((t) => t.id === result.taskId);
         if (task) {
-          console.log(chalk.cyan(`Task: ${task.description}`));
+          console.log(theme.info(`Task: ${task.description}`));
           console.log(result.result);
-          console.log(chalk.dim('---\n'));
+          console.log(theme.dim('---\n'));
         }
       }
     }
@@ -98,7 +110,7 @@ async function processWithMultiWorker(
  * Returns the full response text.
  */
 async function processPrompt(agent: Agent, prompt: string, signal?: AbortSignal): Promise<string> {
-  const spinner = ora({ text: 'Thinking...', color: 'cyan' }).start();
+  const spinner = ora({ text: 'Thinking...' }).start();
   let isStreaming = false;
   let fullText = '';
 
@@ -107,7 +119,7 @@ async function processPrompt(agent: Agent, prompt: string, signal?: AbortSignal)
       if (signal?.aborted) break;
       switch (event.type) {
         case 'context_compressed':
-          spinner.info(chalk.yellow(`Context compressed: ${event.before} → ${event.after} tokens`));
+          spinner.info(formatInfo(`Context compressed: ${event.before} → ${event.after} tokens`));
           spinner.start('Thinking...');
           break;
 
@@ -139,21 +151,21 @@ async function processPrompt(agent: Agent, prompt: string, signal?: AbortSignal)
             console.log('');
             isStreaming = false;
           }
-          spinner.start(chalk.blue(`⚡ ${event.name}`));
+          spinner.start(theme.progress(`⚡ ${event.name}`));
           break;
 
         case 'tool_call':
-          spinner.text = chalk.blue(`⚡ ${event.name}`) + chalk.dim(` ${formatArgs(event.args)}`);
+          spinner.text = theme.progress(`⚡ ${event.name}`) + theme.dim(` ${formatArgs(event.args)}`);
           break;
 
         case 'tool_result': {
-          spinner.succeed(chalk.blue(`⚡ ${event.name}`) + chalk.green(' ✓'));
+          spinner.succeed(theme.progress(`⚡ ${event.name}`) + theme.success(' ✓'));
           // Show truncated result for context
           const preview = event.result.slice(0, 200);
           if (event.result.length > 200) {
-            console.log(chalk.dim(`   ${preview}...`));
+            console.log(theme.dim(`   ${preview}...`));
           } else if (preview.trim()) {
-            console.log(chalk.dim(`   ${preview}`));
+            console.log(theme.dim(`   ${preview}`));
           }
           spinner.start('Thinking...');
           break;
@@ -164,7 +176,7 @@ async function processPrompt(agent: Agent, prompt: string, signal?: AbortSignal)
           break;
 
         case 'error':
-          spinner.fail(chalk.red(`Error: ${event.message}`));
+          spinner.fail(formatError(`Error: ${event.message}`));
           break;
 
         default:
@@ -175,7 +187,7 @@ async function processPrompt(agent: Agent, prompt: string, signal?: AbortSignal)
     if (signal?.aborted || (error as Error).name === 'AbortError') {
       spinner.stop();
       if (isStreaming) console.log(''); // Close line if streaming
-      console.log(chalk.yellow('^C'));
+      console.log(theme.warning('^C'));
       return fullText;
     }
     throw error;
@@ -190,7 +202,7 @@ async function processPrompt(agent: Agent, prompt: string, signal?: AbortSignal)
  */
 export const runSinglePrompt = async (prompt: string, systemPrompt?: string): Promise<void> => {
   const config = getConfig();
-  console.log(chalk.dim(`Model: ${config.modelName}\n`));
+  console.log(theme.dim(`Model: ${config.modelName}\n`));
 
   const agent = new Agent(systemPrompt);
 
@@ -198,7 +210,7 @@ export const runSinglePrompt = async (prompt: string, systemPrompt?: string): Pr
     await processPrompt(agent, prompt);
     console.log(''); // Extra line for readability
   } catch (error) {
-    console.error(chalk.red('Error:'), error);
+    console.error(formatError('Error:'), error);
     process.exit(1);
   }
 };
@@ -217,10 +229,10 @@ export const startInteractiveSession = async (
   const config = getConfig();
   if (!config.openaiApiKey && !process.env.OPENAI_API_KEY) {
     console.log(
-      chalk.yellow("⚠ No API key configured. Use 'cadre config --key <key>' or set OPENAI_API_KEY"),
+      formatWarning("No API key configured. Use 'cadre config --key <key>' or set OPENAI_API_KEY"),
     );
   }
-  console.log(chalk.dim(`Model: ${config.modelName} | Endpoint: ${config.openaiBaseUrl}\n`));
+  console.log(theme.dim(`Model: ${config.modelName} | Endpoint: ${config.openaiBaseUrl}\n`));
 
   const agent = new Agent(systemPrompt);
 
@@ -236,22 +248,22 @@ export const startInteractiveSession = async (
   if (loadFilePath) {
     try {
       const count = await loadConversation(agent, loadFilePath);
-      console.log(chalk.green(`Loaded conversation with ${count} messages.`));
-      console.log(chalk.dim('----------------------------------------'));
+      console.log(formatSuccess(`Loaded conversation with ${count} messages.`));
+      console.log(formatSeparator());
       // Show last few messages for context
       const history = agent.getHistory().filter((h) => h.role === 'user' || h.role === 'assistant');
       printMessages(history.slice(-5));
-      console.log(chalk.dim('----------------------------------------'));
+      console.log(formatSeparator());
     } catch (error) {
       const err = error as Error;
-      console.log(chalk.red(`Failed to load conversation: ${err.message}`));
+      console.log(formatError(`Failed to load conversation: ${err.message}`));
     }
   }
 
   // Process initial prompt if provided
   if (initialPrompt) {
     console.log(
-      `${chalk.green('❯')} ${chalk.dim(
+      `${theme.userInput('❯')} ${theme.dim(
         initialPrompt.slice(0, 80) + (initialPrompt.length > 80 ? '...' : ''),
       )}`,
     );
@@ -259,7 +271,7 @@ export const startInteractiveSession = async (
       await processPrompt(agent, initialPrompt);
       console.log(''); // Extra line for readability
     } catch (error) {
-      console.error(chalk.red('Error:'), error);
+      console.error(formatError('Error:'), error);
     }
   }
 
@@ -282,7 +294,7 @@ export const startInteractiveSession = async (
       agent.clearHistory();
       history.forEach((msg) => agent.getHistory().push(msg));
       currentBranch = lastBranch;
-      console.log(chalk.blue(`Resumed branch '${lastBranch}' from last session.`));
+      console.log(theme.info(`Resumed branch '${lastBranch}' from last session.`));
     }
   } catch {
     // Ignore errors loading last branch
@@ -309,7 +321,7 @@ export const startInteractiveSession = async (
         const usage = agent.getSessionUsage();
         const tokens = usage.total.toLocaleString();
 
-        const branchStr = currentBranch ? ` [${chalk.cyan(currentBranch)}]` : '';
+        const branchStr = currentBranch ? ` [${theme.highlight(currentBranch)}]` : '';
         promptStr = `You${branchStr} (tokens: ${tokens}): `;
       }
 
@@ -318,7 +330,7 @@ export const startInteractiveSession = async (
       const suggestionCallback = (text: string) => getInlineSuggestion(text, cachedBranchNames);
 
       const answer = await lineEditor.read(
-        mode === 'normal' ? chalk.green(promptStr) : chalk.yellow(promptStr),
+        mode === 'normal' ? theme.userInput(promptStr) : theme.warning(promptStr),
         {
           completionCallback,
           suggestionCallback,
@@ -414,13 +426,13 @@ export const startInteractiveSession = async (
 
         if (percent >= 100) {
           console.log(
-            chalk.red.bold(
+            theme.error.bold(
               `⚠ Session limit reached (${usage.total}/${config.maxSessionTokens} tokens).`,
             ),
           );
         } else if (percent >= 80) {
           console.log(
-            chalk.yellow(
+            theme.warning(
               `⚠ Approaching session limit: ${usage.total}/${config.maxSessionTokens} tokens (${percent.toFixed(1)}%)`,
             ),
           );
@@ -439,7 +451,7 @@ export const startInteractiveSession = async (
         multiLineHandler.cancel();
         continue;
       }
-      console.error(chalk.red('Error:'), error);
+      console.error(theme.error('Error:'), error);
     }
   }
 
@@ -466,22 +478,22 @@ async function handleSlashCommand(
     case 'exit':
     case 'quit':
     case 'q':
-      console.log(chalk.dim('Goodbye!'));
+      console.log(theme.dim('Goodbye!'));
       return 'exit';
 
     case 'clear':
       agent.clearHistory();
       console.clear();
-      console.log(chalk.dim('Context cleared.'));
+      console.log(theme.dim('Context cleared.'));
       return true;
 
     case 'config': {
-      console.log(chalk.bold('Current Configuration:'));
+      console.log(theme.emphasis('Current Configuration:'));
       const config = getConfig();
-      console.log(chalk.dim(`  Model:    ${config.modelName}`));
-      console.log(chalk.dim(`  Endpoint: ${config.openaiBaseUrl}`));
+      console.log(theme.dim(`  Model:    ${config.modelName}`));
+      console.log(theme.dim(`  Endpoint: ${config.openaiBaseUrl}`));
       console.log(
-        chalk.dim(
+        theme.dim(
           `  API Key:  ${config.openaiApiKey ? `****${config.openaiApiKey.slice(-4)}` : 'Not set'}`,
         ),
       );
@@ -492,18 +504,18 @@ async function handleSlashCommand(
       const usage = agent.getSessionUsage();
       const config = getConfig();
 
-      console.log(chalk.bold('\nSession Token Usage:'));
-      console.log(chalk.dim(`  Input:      ${usage.input.toLocaleString()}`));
-      console.log(chalk.dim(`  Output:     ${usage.output.toLocaleString()}`));
-      console.log(chalk.blue(`  Total:      ${usage.total.toLocaleString()}`));
+      console.log(theme.emphasis('\nSession Token Usage:'));
+      console.log(theme.dim(`  Input:      ${usage.input.toLocaleString()}`));
+      console.log(theme.dim(`  Output:     ${usage.output.toLocaleString()}`));
+      console.log(theme.info(`  Total:      ${usage.total.toLocaleString()}`));
 
       if (usage.cost > 0) {
-        console.log(chalk.dim(`  Est. Cost:  $${usage.cost.toFixed(4)}`));
+        console.log(theme.dim(`  Est. Cost:  $${usage.cost.toFixed(4)}`));
       }
 
       if (config.maxSessionTokens > 0) {
         const percent = (usage.total / config.maxSessionTokens) * 100;
-        const color = percent > 80 ? chalk.yellow : chalk.dim;
+        const color = percent > 80 ? theme.warning : theme.dim;
         console.log(
           color(
             `  Limit:      ${usage.total.toLocaleString()} / ${config.maxSessionTokens.toLocaleString()} (${percent.toFixed(1)}%)`,
@@ -517,16 +529,16 @@ async function handleSlashCommand(
     case 'context':
     case 'stats': {
       const stats = agent.getContextStats();
-      console.log(chalk.bold('\nContext Statistics:'));
+      console.log(theme.emphasis('\nContext Statistics:'));
       console.log(
-        chalk.dim(
+        theme.dim(
           `  Tokens:     ~${stats.currentTokens} / ${stats.maxTokens} (${stats.percentUsed}%)`,
         ),
       );
-      console.log(chalk.dim(`  Messages:   ${stats.messageCount}`));
-      console.log(chalk.dim(`  Has summary: ${stats.hasSummary ? 'Yes' : 'No'}`));
+      console.log(theme.dim(`  Messages:   ${stats.messageCount}`));
+      console.log(theme.dim(`  Has summary: ${stats.hasSummary ? 'Yes' : 'No'}`));
       if (stats.needsCompression) {
-        console.log(chalk.yellow(`  ⚠ Context will be compressed on next message`));
+        console.log(theme.warning(`  ⚠ Context will be compressed on next message`));
       }
       console.log('');
       return true;
@@ -534,31 +546,31 @@ async function handleSlashCommand(
 
     case 'help':
     case '?':
-      console.log(chalk.bold('\nCommands:'));
-      console.log(chalk.dim('  /history [n] - View conversation history (default: all/paginated)'));
-      console.log(chalk.dim('  /clear       - Clear conversation history'));
-      console.log(chalk.dim('  /config      - Show current configuration'));
-      console.log(chalk.dim('  /tokens      - Show session token usage & cost'));
-      console.log(chalk.dim('  /stats       - Show context/token statistics'));
-      console.log(chalk.dim('  /exit        - Exit the session'));
+      console.log(theme.emphasis('\nCommands:'));
+      console.log(theme.dim('  /history [n] - View conversation history (default: all/paginated)'));
+      console.log(theme.dim('  /clear       - Clear conversation history'));
+      console.log(theme.dim('  /config      - Show current configuration'));
+      console.log(theme.dim('  /tokens      - Show session token usage & cost'));
+      console.log(theme.dim('  /stats       - Show context/token statistics'));
+      console.log(theme.dim('  /exit        - Exit the session'));
 
-      console.log(chalk.dim('  /system [prompt] - View or update system prompt'));
-      console.log(chalk.dim('  /save [name] - Save conversation to file'));
-      console.log(chalk.dim('  /load [file] - Load conversation from file (or list available)'));
-      console.log(chalk.dim('  /branch [name] - Create a new branch or show current branch'));
-      console.log(chalk.dim('  /checkout <name> - Switch to a different branch'));
-      console.log(chalk.dim('  /multi       - Enter multi-line input mode (end with /end)'));
-      console.log(chalk.dim('  /parallel <prompt> - Execute task with multiple workers'));
-      console.log(chalk.dim('  /workers     - Show worker pool status'));
-      console.log(chalk.dim('  /help        - Show this help\n'));
+      console.log(theme.dim('  /system [prompt] - View or update system prompt'));
+      console.log(theme.dim('  /save [name] - Save conversation to file'));
+      console.log(theme.dim('  /load [file] - Load conversation from file (or list available)'));
+      console.log(theme.dim('  /branch [name] - Create a new branch or show current branch'));
+      console.log(theme.dim('  /checkout <name> - Switch to a different branch'));
+      console.log(theme.dim('  /multi       - Enter multi-line input mode (end with /end)'));
+      console.log(theme.dim('  /parallel <prompt> - Execute task with multiple workers'));
+      console.log(theme.dim('  /workers     - Show worker pool status'));
+      console.log(theme.dim('  /help        - Show this help\n'));
       return true;
 
     case 'branch':
       if (args.length === 0) {
         if (currentBranch) {
-          console.log(chalk.blue(`Current branch: ${currentBranch}`));
+          console.log(theme.info(`Current branch: ${currentBranch}`));
         } else {
-          console.log(chalk.dim('No active branch (main conversation).'));
+          console.log(theme.dim('No active branch (main conversation).'));
         }
         return true;
       }
@@ -566,15 +578,15 @@ async function handleSlashCommand(
       if (args[0] === '--list' || args[0] === '-l') {
         const branches = await branchManager.listBranches();
         if (branches.length === 0) {
-          console.log(chalk.dim('No branches found.'));
+          console.log(theme.dim('No branches found.'));
         } else {
-          console.log(chalk.bold('\nBranches:'));
+          console.log(theme.emphasis('\nBranches:'));
           for (const b of branches) {
             const isCurrent = b.name === currentBranch;
-            const marker = isCurrent ? chalk.green('*') : ' ';
+            const marker = isCurrent ? theme.success('*') : ' ';
             const date = new Date(b.lastModified).toISOString().slice(0, 10);
             console.log(
-              `${marker} ${chalk.blue(b.name.padEnd(20))} ${chalk.dim(`${b.messageCount} msgs`)} ${chalk.dim(date)}`,
+              `${marker} ${theme.info(b.name.padEnd(20))} ${theme.dim(`${b.messageCount} msgs`)} ${theme.dim(date)}`,
             );
           }
           console.log('');
@@ -596,16 +608,16 @@ async function handleSlashCommand(
         await branchManager.createBranch(newBranchName, agent.getHistory());
         setBranch(newBranchName);
         await sessionManager.setLastBranch(newBranchName);
-        console.log(chalk.green(`Created and switched to branch '${newBranchName}'`));
+        console.log(theme.success(`Created and switched to branch '${newBranchName}'`));
       } catch (error) {
         const err = error as Error;
-        console.log(chalk.red(`Error: ${err.message}`));
+        console.log(theme.error(`Error: ${err.message}`));
       }
       return true;
 
     case 'checkout':
       if (args.length === 0) {
-        console.log(chalk.yellow('Usage: /checkout <branch-name>'));
+        console.log(theme.warning('Usage: /checkout <branch-name>'));
         return true;
       }
 
@@ -615,17 +627,17 @@ async function handleSlashCommand(
 
         // Check if target branch exists
         if (!branchManager.branchExists(targetBranch)) {
-          console.log(chalk.red(`Branch '${targetBranch}' not found.`));
+          console.log(theme.error(`Branch '${targetBranch}' not found.`));
           return true;
         }
 
         // Warn about unsaved changes if configured
         if (config.warnUnsavedBranchSwitch && currentBranch) {
           const confirm = await lineEditor.read(
-            chalk.yellow(`Switch from '${currentBranch}' to '${targetBranch}'? (y/n): `),
+            theme.warning(`Switch from '${currentBranch}' to '${targetBranch}'? (y/n): `),
           );
           if (confirm.toLowerCase() !== 'y' && confirm.toLowerCase() !== 'yes') {
-            console.log(chalk.dim('Checkout cancelled.'));
+            console.log(theme.dim('Checkout cancelled.'));
             return true;
           }
         }
@@ -643,10 +655,10 @@ async function handleSlashCommand(
 
         setBranch(targetBranch);
         await sessionManager.setLastBranch(targetBranch);
-        console.log(chalk.green(`Switched to branch '${targetBranch}'`));
+        console.log(theme.success(`Switched to branch '${targetBranch}'`));
       } catch (error) {
         const err = error as Error;
-        console.log(chalk.red(`Error: ${err.message}`));
+        console.log(theme.error(`Error: ${err.message}`));
       }
       return true;
 
@@ -654,10 +666,10 @@ async function handleSlashCommand(
       if (args.length === 0 || args[0] === '--list') {
         const files = listConversations();
         if (files.length === 0) {
-          console.log(chalk.dim('No saved conversations found.'));
+          console.log(theme.dim('No saved conversations found.'));
         } else {
-          console.log(chalk.bold('\nSaved Conversations:'));
-          files.forEach((f) => console.log(chalk.blue(`  ${f}`)));
+          console.log(theme.emphasis('\nSaved Conversations:'));
+          files.forEach((f) => console.log(theme.info(`  ${f}`)));
           console.log('');
         }
         return true;
@@ -669,49 +681,49 @@ async function handleSlashCommand(
         // user explicitly typed /load, so they probably know what they are doing.
 
         const count = await loadConversation(agent, args[0]);
-        console.log(chalk.green(`Loaded conversation with ${count} messages.`));
-        console.log(chalk.dim('Context updated.'));
+        console.log(theme.success(`Loaded conversation with ${count} messages.`));
+        console.log(theme.dim('Context updated.'));
       } catch (error) {
         const err = error as Error;
-        console.log(chalk.red(`Error loading conversation: ${err.message}`));
+        console.log(theme.error(`Error loading conversation: ${err.message}`));
       }
       return true;
 
     case 'save':
       try {
         const socketPath = await saveConversation(agent, args[0]);
-        console.log(chalk.green(`Conversation saved to: ${socketPath}`));
+        console.log(theme.success(`Conversation saved to: ${socketPath}`));
       } catch (error) {
         const err = error as Error;
-        console.log(chalk.red(`Error saving conversation: ${err.message}`));
+        console.log(theme.error(`Error saving conversation: ${err.message}`));
       }
       return true;
 
     case 'multi':
       multiLineHandler.setMode('explicit');
       console.log(
-        chalk.yellow('Entering multi-line mode. Type /end to submit, /cancel to discard.'),
+        theme.warning('Entering multi-line mode. Type /end to submit, /cancel to discard.'),
       );
       return true;
 
     case 'cancel':
       multiLineHandler.cancel();
-      console.log(chalk.yellow('Input cancelled.'));
+      console.log(theme.warning('Input cancelled.'));
       return true;
 
     case 'system':
       if (args.length === 0) {
-        console.log(chalk.bold('\nCurrent System Prompt:'));
-        console.log(chalk.dim(agent.getSystemPrompt()));
+        console.log(theme.emphasis('\nCurrent System Prompt:'));
+        console.log(theme.dim(agent.getSystemPrompt()));
         console.log('');
       } else {
         const newPrompt = args.join(' ');
         try {
           agent.updateSystemPrompt(newPrompt);
-          console.log(chalk.green('System prompt updated.'));
+          console.log(theme.success('System prompt updated.'));
         } catch (error) {
           const err = error as Error;
-          console.log(chalk.red(`Error updating system prompt: ${err.message}`));
+          console.log(theme.error(`Error updating system prompt: ${err.message}`));
         }
       }
       return true;
@@ -723,13 +735,13 @@ async function handleSlashCommand(
 
     case 'parallel':
       if (!coordinator) {
-        console.log(chalk.red('Error: Multi-worker system not initialized.'));
+        console.log(theme.error('Error: Multi-worker system not initialized.'));
         return true;
       }
       if (args.length === 0) {
-        console.log(chalk.yellow('Usage: /parallel <your task description>'));
+        console.log(theme.warning('Usage: /parallel <your task description>'));
         console.log(
-          chalk.dim('Example: /parallel Refactor the authentication module and update tests'),
+          theme.dim('Example: /parallel Refactor the authentication module and update tests'),
         );
         return true;
       }
@@ -739,35 +751,35 @@ async function handleSlashCommand(
         await processWithMultiWorker(parallelPrompt, coordinator);
       } catch (error) {
         const err = error as Error;
-        console.log(chalk.red(`Error executing parallel tasks: ${err.message}`));
+        console.log(theme.error(`Error executing parallel tasks: ${err.message}`));
       }
       return true;
 
     case 'workers': {
       if (!coordinator) {
-        console.log(chalk.red('Error: Multi-worker system not initialized.'));
+        console.log(theme.error('Error: Multi-worker system not initialized.'));
         return true;
       }
 
       const stats = coordinator.getStats();
-      console.log(chalk.bold('\n👷 Worker Pool Status:\n'));
-      console.log(chalk.dim(`  Total Workers:     ${stats.total}`));
-      console.log(chalk.dim(`  Idle:              ${chalk.green(stats.idle.toString())}`));
-      console.log(chalk.dim(`  Busy:              ${chalk.yellow(stats.busy.toString())}`));
+      console.log(theme.emphasis('\n👷 Worker Pool Status:\n'));
+      console.log(theme.dim(`  Total Workers:     ${stats.total}`));
+      console.log(theme.dim(`  Idle:              ${theme.success(stats.idle.toString())}`));
+      console.log(theme.dim(`  Busy:              ${theme.warning(stats.busy.toString())}`));
       console.log(
-        chalk.dim(
-          `  Error:             ${stats.error > 0 ? chalk.red(stats.error.toString()) : '0'}`,
+        theme.dim(
+          `  Error:             ${stats.error > 0 ? theme.error(stats.error.toString()) : '0'}`,
         ),
       );
-      console.log(chalk.dim(`  Stopped:           ${stats.stopped}`));
-      console.log(chalk.dim(`  Tasks Completed:   ${stats.totalTasksCompleted}`));
-      console.log(chalk.dim(`  Total Errors:      ${stats.totalErrors}`));
+      console.log(theme.dim(`  Stopped:           ${stats.stopped}`));
+      console.log(theme.dim(`  Tasks Completed:   ${stats.totalTasksCompleted}`));
+      console.log(theme.dim(`  Total Errors:      ${stats.totalErrors}`));
       console.log('');
       return true;
     }
 
     default:
-      console.log(chalk.yellow(`Unknown command: /${cmd}. Type /help for available commands.`));
+      console.log(theme.warning(`Unknown command: /${cmd}. Type /help for available commands.`));
       return true;
   }
 }
@@ -778,7 +790,7 @@ async function showHistory(agent: Agent, lineEditor: LineEditor, arg?: string): 
     .filter((item) => item.role === 'user' || item.role === 'assistant');
 
   if (allHistory.length === 0) {
-    console.log(chalk.dim('No history yet.'));
+    console.log(theme.dim('No history yet.'));
     return;
   }
 
@@ -805,7 +817,7 @@ async function showHistory(agent: Agent, lineEditor: LineEditor, arg?: string): 
   while (true) {
     console.clear();
     console.log(
-      chalk.bold(
+      theme.emphasis(
         `Conversation History (Page ${currentPage + 1}/${totalPages}) - ${allHistory.length} messages\n`,
       ),
     );
@@ -819,8 +831,8 @@ async function showHistory(agent: Agent, lineEditor: LineEditor, arg?: string): 
     const pageMessages = allHistory.slice(start, end);
     printMessages(pageMessages);
 
-    console.log(chalk.dim('\n----------------------------------------'));
-    console.log(chalk.dim(`Viewing ${start + 1}-${end} of ${allHistory.length} messages.`));
+    console.log(theme.dim('\n----------------------------------------'));
+    console.log(theme.dim(`Viewing ${start + 1}-${end} of ${allHistory.length} messages.`));
 
     const options = [];
     if (currentPage < totalPages - 1) options.push('[o]lder');
@@ -847,18 +859,18 @@ function printMessages(messages: HistoryItem[]) {
     const date = new Date(item.timestamp || Date.now());
     const timeStr = date.toISOString().replace('T', ' ').slice(0, 19);
 
-    const roleColor = item.role === 'user' ? chalk.green : chalk.magenta;
+    const roleColor = formatRole(item.role as 'user' | 'assistant' | 'system');
     const roleName = item.role.toUpperCase();
 
-    console.log(chalk.dim(`[${timeStr}] `) + roleColor(roleName) + ':');
+    console.log(theme.dim(`[${timeStr}] `) + roleColor(roleName) + ':');
 
     // Simple content rendering
     if (item.content) {
       console.log(item.content);
     } else if ('tool_calls' in item && item.tool_calls) {
-      console.log(chalk.dim('(Tool calls hidden)'));
+      console.log(theme.dim('(Tool calls hidden)'));
     }
-    console.log(chalk.dim('---'));
+    console.log(theme.dim('---'));
   }
 }
 

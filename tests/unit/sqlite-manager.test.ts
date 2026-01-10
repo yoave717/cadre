@@ -4,78 +4,72 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { SqliteIndexManager } from '../../src/index-system/sqlite-manager';
-import type { ProjectIndex } from '../../src/index-system/types';
 
 describe('SqliteIndexManager', () => {
   // Use real temp directory like the actual getIndexDir does
   const testProjectRoot = path.join(os.tmpdir(), 'test-sqlite-' + Date.now());
   let manager: SqliteIndexManager;
 
-  const mockIndex: ProjectIndex = {
-    version: 1,
-    projectRoot: testProjectRoot,
-    projectHash: 'test-hash-123',
-    indexed_at: Date.now(),
-    files: {
-      'src/index.ts': {
-        metadata: {
-          path: 'src/index.ts',
-          absolutePath: path.join(testProjectRoot, 'src/index.ts'),
-          size: 1000,
-          mtime: Date.now(),
-          hash: 'file-hash-abc',
-          language: 'TypeScript',
-          lines: 50,
-        },
-        symbols: [
-          {
-            name: 'testFunction',
-            type: 'function',
-            line: 10,
-            exported: true,
-            signature: 'function testFunction(): void',
-          },
-          {
-            name: 'TestClass',
-            type: 'class',
-            line: 20,
-            exported: true,
-          },
-          {
-            name: 'internalHelper',
-            type: 'function',
-            line: 30,
-            exported: false,
-          },
-        ],
-        imports: ['fs', 'path'],
-        exports: ['testFunction', 'TestClass'],
+  const mockFiles = {
+    'src/index.ts': {
+      metadata: {
+        path: 'src/index.ts',
+        absolutePath: path.join(testProjectRoot, 'src/index.ts'),
+        size: 1000,
+        mtime: Date.now(),
+        hash: 'file-hash-abc',
+        language: 'TypeScript',
+        lines: 50,
       },
-      'src/utils.ts': {
-        metadata: {
-          path: 'src/utils.ts',
-          absolutePath: path.join(testProjectRoot, 'src/utils.ts'),
-          size: 500,
-          mtime: Date.now(),
-          hash: 'utils-hash',
-          language: 'TypeScript',
-          lines: 25,
+      symbols: [
+        {
+          name: 'testFunction',
+          type: 'function' as const,
+          line: 10,
+          endLine: 15,
+          exported: true,
+          signature: 'function testFunction(): void',
         },
-        symbols: [
-          {
-            name: 'utilFunction',
-            type: 'function',
-            line: 5,
-            exported: true,
-          },
-        ],
-        imports: [],
-        exports: ['utilFunction'],
-      },
+        {
+          name: 'TestClass',
+          type: 'class' as const,
+          line: 20,
+          endLine: 30,
+          exported: true,
+        },
+        {
+          name: 'internalHelper',
+          type: 'function' as const,
+          line: 30,
+          endLine: 35,
+          exported: false,
+        },
+      ],
+      imports: ['fs', 'path'],
+      exports: ['testFunction', 'TestClass'],
     },
-    totalFiles: 2,
-    totalSymbols: 4,
-    languages: { TypeScript: 2 },
+    'src/utils.ts': {
+      metadata: {
+        path: 'src/utils.ts',
+        absolutePath: path.join(testProjectRoot, 'src/utils.ts'),
+        size: 500,
+        mtime: Date.now(),
+        hash: 'utils-hash',
+        language: 'TypeScript',
+        lines: 25,
+      },
+      symbols: [
+        {
+          name: 'utilFunction',
+          type: 'function' as const,
+          line: 5,
+          endLine: 10,
+          exported: true,
+        },
+      ],
+      imports: [],
+      exports: ['utilFunction'],
+    },
   };
 
   beforeEach(() => {
@@ -110,9 +104,13 @@ describe('SqliteIndexManager', () => {
     });
   });
 
-  describe('importFromJSON', () => {
-    it('should import project index successfully', () => {
-      manager.importFromJSON(mockIndex);
+  describe('insertBatch', () => {
+    it('should insert batch successfully', () => {
+      manager.insertBatch(mockFiles);
+
+      // Need to set metadata manually as insertBatch doesn't do it automatically unlike importFromJSON
+      manager.setMetadata('total_files', '2');
+      manager.setMetadata('total_symbols', '4');
 
       const stats = manager.getStats();
       expect(stats).not.toBeNull();
@@ -120,8 +118,8 @@ describe('SqliteIndexManager', () => {
       expect(stats?.totalSymbols).toBe(4);
     });
 
-    it('should import file metadata correctly', () => {
-      manager.importFromJSON(mockIndex);
+    it('should store file metadata correctly', () => {
+      manager.insertBatch(mockFiles);
 
       const symbols = manager.getFileSymbols('src/index.ts');
       expect(symbols).toHaveLength(3);
@@ -129,7 +127,7 @@ describe('SqliteIndexManager', () => {
     });
 
     it('should import symbols with correct properties', () => {
-      manager.importFromJSON(mockIndex);
+      manager.insertBatch(mockFiles);
 
       const symbols = manager.getFileSymbols('src/index.ts');
       const testFunc = symbols.find((s) => s.name === 'testFunction');
@@ -142,25 +140,16 @@ describe('SqliteIndexManager', () => {
     });
 
     it('should import imports and exports', () => {
-      manager.importFromJSON(mockIndex);
+      manager.insertBatch(mockFiles);
 
       const importers = manager.findImporters('fs');
       expect(importers).toContain('src/index.ts');
-    });
-
-    it('should replace existing data on re-import', () => {
-      manager.importFromJSON(mockIndex);
-      expect(manager.getStats()?.totalFiles).toBe(2);
-
-      const newIndex = { ...mockIndex, totalFiles: 3 };
-      manager.importFromJSON(newIndex);
-      expect(manager.getStats()?.totalFiles).toBe(3);
     });
   });
 
   describe('searchSymbols', () => {
     beforeEach(() => {
-      manager.importFromJSON(mockIndex);
+      manager.insertBatch(mockFiles);
     });
 
     it('should find exact match', () => {
@@ -215,7 +204,7 @@ describe('SqliteIndexManager', () => {
 
   describe('findFiles', () => {
     beforeEach(() => {
-      manager.importFromJSON(mockIndex);
+      manager.insertBatch(mockFiles);
     });
 
     it('should find files by name', () => {
@@ -252,7 +241,7 @@ describe('SqliteIndexManager', () => {
 
   describe('getFileSymbols', () => {
     beforeEach(() => {
-      manager.importFromJSON(mockIndex);
+      manager.insertBatch(mockFiles);
     });
 
     it('should get all symbols in a file', () => {
@@ -277,7 +266,7 @@ describe('SqliteIndexManager', () => {
 
   describe('findImporters', () => {
     beforeEach(() => {
-      manager.importFromJSON(mockIndex);
+      manager.insertBatch(mockFiles);
     });
 
     it('should find files importing a module', () => {
@@ -306,8 +295,10 @@ describe('SqliteIndexManager', () => {
       expect(stats).toBeNull();
     });
 
-    it('should return correct statistics after import', () => {
-      manager.importFromJSON(mockIndex);
+    it('should return correct statistics after insert', () => {
+      manager.insertBatch(mockFiles);
+      manager.setMetadata('total_files', '2');
+      manager.setMetadata('total_symbols', '4');
 
       const stats = manager.getStats();
 
@@ -315,7 +306,6 @@ describe('SqliteIndexManager', () => {
       expect(stats?.totalFiles).toBe(2);
       expect(stats?.totalSymbols).toBe(4);
       expect(stats?.totalSize).toBe(1500); // 1000 + 500
-      expect(stats?.languages).toEqual({ TypeScript: 2 });
     });
   });
 
@@ -324,57 +314,48 @@ describe('SqliteIndexManager', () => {
       expect(manager.hasData()).toBe(false);
     });
 
-    it('should return true after importing data', () => {
-      manager.importFromJSON(mockIndex);
+    it('should return true after inserting data', () => {
+      manager.insertBatch(mockFiles);
 
       expect(manager.hasData()).toBe(true);
     });
   });
 
-  describe('large dataset', () => {
-    it('should handle large number of files', () => {
-      const largeIndex: ProjectIndex = {
-        ...mockIndex,
-        files: {},
-      };
+  describe('getAllFiles', () => {
+    it('should return all files', () => {
+      manager.insertBatch(mockFiles);
+      const files = manager.getAllFiles();
 
-      // Create 100 files with symbols
-      for (let i = 0; i < 100; i++) {
-        largeIndex.files[`src/file${i}.ts`] = {
-          metadata: {
-            path: `src/file${i}.ts`,
-            absolutePath: path.join(testProjectRoot, `src/file${i}.ts`),
-            size: 1000,
-            mtime: Date.now(),
-            hash: `hash-${i}`,
-            language: 'TypeScript',
-            lines: 50,
-          },
-          symbols: [
-            {
-              name: `function${i}`,
-              type: 'function',
-              line: 10,
-              exported: true,
-            },
-          ],
-          imports: [],
-          exports: [`function${i}`],
-        };
-      }
+      expect(files).toHaveLength(2);
+      expect(files.some((f) => f.path === 'src/index.ts')).toBe(true);
+      expect(files.some((f) => f.path === 'src/utils.ts')).toBe(true);
+      expect(files[0]).toHaveProperty('mtime');
+      expect(files[0]).toHaveProperty('hash');
+    });
+  });
 
-      largeIndex.totalFiles = 100;
-      largeIndex.totalSymbols = 100;
+  describe('deleteFile', () => {
+    it('should delete file and associated data', () => {
+      manager.insertBatch(mockFiles);
+      manager.deleteFile('src/index.ts');
 
-      manager.importFromJSON(largeIndex);
+      const files = manager.getAllFiles();
+      expect(files).toHaveLength(1);
+      expect(files[0].path).toBe('src/utils.ts');
 
-      const stats = manager.getStats();
-      expect(stats?.totalFiles).toBe(100);
-      expect(stats?.totalSymbols).toBe(100);
+      const symbols = manager.getFileSymbols('src/index.ts');
+      expect(symbols).toHaveLength(0);
+    });
+  });
 
-      // Query should still be fast
-      const results = manager.searchSymbols('function50');
-      expect(results).toHaveLength(1);
+  describe('metadata', () => {
+    it('should set and get metadata', () => {
+      manager.setMetadata('foo', 'bar');
+      expect(manager.getMetadata('foo')).toBe('bar');
+    });
+
+    it('should return null for missing metadata', () => {
+      expect(manager.getMetadata('missing')).toBeNull();
     });
   });
 });

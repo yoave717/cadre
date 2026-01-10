@@ -18,6 +18,11 @@ vi.mock('../../src/permissions/index.js', () => ({
   }),
 }));
 
+vi.mock('../../src/tools/index', () => ({
+  getAllFilePaths: vi.fn().mockResolvedValue([]),
+  findFilesByName: vi.fn().mockResolvedValue([]),
+}));
+
 // Import non-promise fs to access the mock
 import * as fsLegacy from 'fs';
 import { Readable } from 'stream';

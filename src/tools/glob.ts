@@ -35,12 +35,18 @@ interface GlobOptions {
  */
 function matchPattern(filePath: string, pattern: string): boolean {
   // Convert glob pattern to regex
+  // Convert glob pattern to regex
   let regex = pattern
     .replace(/\./g, '\\.') // Escape dots
-    .replace(/\*\*/g, '<<GLOBSTAR>>') // Placeholder for **
-    .replace(/\*/g, '[^/]*') // * matches anything except /
-    .replace(/\?/g, '[^/]') // ? matches single char except /
-    .replace(/<<GLOBSTAR>>/g, '.*'); // ** matches anything including /
+    .replace(/\*\*\//g, '<<GLOBSTAR_SLASH>>')
+    .replace(/\*\*/g, '<<GLOBSTAR>>')
+    .replace(/\*/g, '<<STAR>>')
+    .replace(/\?/g, '<<QMARK>>')
+
+    .replace(/<<GLOBSTAR_SLASH>>/g, '(?:.*/)?')
+    .replace(/<<GLOBSTAR>>/g, '.*')
+    .replace(/<<STAR>>/g, '[^/]*')
+    .replace(/<<QMARK>>/g, '[^/]');
 
   // Anchor the pattern
   regex = `^${regex}$`;
@@ -118,7 +124,57 @@ export const globFiles = async (pattern: string, options: GlobOptions = {}): Pro
   const results: string[] = [];
 
   try {
-    await walkDirectory(cwd, cwd, pattern, ignorePatterns, results, maxResults);
+    // Optimization: Try to use index first
+    try {
+      // Dynamic import to avoid circular dependency issues at module level
+      const { getAllFilePaths } = await import('./index.js');
+      const allPaths = await getAllFilePaths();
+
+      if (allPaths.length > 0) {
+        // Index is available! Use it.
+        const baseDir = cwd;
+
+        for (const filePath of allPaths) {
+          if (results.length >= maxResults) break;
+
+          // Index stores relative paths to project root, or we need to check.
+          // IndexManager usually stores path relative to project root.
+          // If CWD is project root, it matches.
+          // If CWD is subdirectory, we need to filter?
+          // globFiles options.cwd handles base directory.
+
+          // Let's assume index paths are relative to project root.
+          // We need to resolve them to check matching against CWD-based pattern?
+          // Actually, glob usually matches relative to CWD.
+
+          // If we are in project root:
+          if (shouldIgnore(filePath, ignorePatterns)) continue;
+
+          // Check match
+          if (matchPattern(filePath, pattern)) {
+            results.push(filePath);
+          }
+        }
+
+        // If we found results (or index was authoritative), we return them.
+        // But if pattern matched nothing in index, maybe it's a new file?
+        // Index should be up to date thanks to our previous task.
+        // So we trust the index.
+      }
+    } catch (e) {
+      // Ignore index errors and fall back to FS
+    }
+
+    if (results.length === 0) {
+      // Fallback to FS scan if index found nothing (or wasn't available)
+      // Note: If index was available empty, we might want to trust it?
+      // But safer to fallback if empty results?
+      // Actually user wants speed. If index says 0 files, it's 0 files.
+      // But we only set results if `allPaths.length > 0`.
+      // So if index is loaded but empty, we might fallback.
+
+      await walkDirectory(cwd, cwd, pattern, ignorePatterns, results, maxResults);
+    }
 
     if (results.length === 0) {
       return `No files found matching pattern: ${pattern}`;
@@ -127,10 +183,13 @@ export const globFiles = async (pattern: string, options: GlobOptions = {}): Pro
     // Sort by path
     results.sort();
 
-    let output = `Found ${results.length} file(s) matching "${pattern}":\n`;
-    output += results.map((f) => `  ${f}`).join('\n');
+    // Deduplicate (in case we used mixed approach, but here we strictly switch)
+    const uniqueResults = [...new Set(results)];
 
-    if (results.length >= maxResults) {
+    let output = `Found ${uniqueResults.length} file(s) matching "${pattern}":\n`;
+    output += uniqueResults.map((f) => `  ${f}`).join('\n');
+
+    if (uniqueResults.length >= maxResults) {
       output += `\n\n(Results limited to ${maxResults}. Use more specific pattern to narrow down.)`;
     }
 

@@ -1,7 +1,14 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import type { FileMetadata, FileIndex, Symbol, ProgressCallback } from './types.js';
+import type {
+  FileMetadata,
+  FileIndex,
+  Symbol,
+  ProgressCallback,
+  IndexingLimits,
+  IndexingWarning,
+} from './types.js';
 import {
   extractSymbols,
   extractImports,
@@ -86,38 +93,120 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 /**
+ * Default limits for defensive indexing
+ */
+export const DEFAULT_INDEXING_LIMITS: IndexingLimits = {
+  maxFileSize: 1024 * 1024, // 1MB
+  maxLineCount: 10000, // 10k lines
+  maxLineLength: 10000, // 10k chars per line
+  fileTimeout: 5000, // 5 seconds per file
+  skipOnError: true,
+};
+
+/**
  * Simple concurrency limiter
  */
-const limitConcurrency = <T>(
+/**
+ * Simple concurrency limiter (Iterative approach to avoid recursion depth issues)
+ */
+const limitConcurrency = async <T>(
   items: T[],
   concurrency: number,
   fn: (item: T) => Promise<void>,
 ): Promise<void> => {
-  let index = 0;
-  const active: Promise<void>[] = [];
+  const executing: Promise<void>[] = [];
 
-  const next = (): Promise<void> => {
-    if (index >= items.length) return Promise.resolve();
+  for (const item of items) {
+    const p = Promise.resolve().then(() => fn(item));
+    executing.push(p);
 
-    const item = items[index++];
-    const p = fn(item).then(() => {
-      active.splice(active.indexOf(p), 1);
-    });
+    // Remove from executing list when done
+    const clean = () => {
+      const idx = executing.indexOf(p);
+      if (idx !== -1) executing.splice(idx, 1);
+    };
+    p.then(clean).catch(clean);
 
-    active.push(p);
-
-    if (active.length >= concurrency) {
-      return Promise.race(active).then(next);
+    if (executing.length >= concurrency) {
+      await Promise.race(executing);
     }
+  }
 
-    return Promise.resolve().then(next);
-  };
-
-  const initialBatch = Array.from({ length: Math.min(concurrency, items.length) }, next);
-  return Promise.all(initialBatch)
-    .then(() => Promise.all(active))
-    .then(() => undefined);
+  await Promise.all(executing);
 };
+
+/**
+ * Timeout wrapper for async operations
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  operationName: string,
+): Promise<T> {
+  let timeoutHandle: NodeJS.Timeout;
+  let warnHandle: NodeJS.Timeout;
+
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`Timeout: ${operationName} exceeded ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  // Warn if taking more than 2 seconds (soft warning)
+  warnHandle = setTimeout(() => {
+    // Check if we are still pending (implicitly, since this runs)
+    // Only log if timeoutMs is significantly larger than 2s to avoid double noise
+    if (timeoutMs > 2000) {
+      // Using console.error to bypass progress line clearing if possible, or just force newline
+      process.stdout.write(
+        `\n[WARN] Slow operation detected: ${operationName} (running for >2s)\n`,
+      );
+    }
+  }, 2000);
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timeoutHandle!);
+    clearTimeout(warnHandle!);
+    return result;
+  } catch (error) {
+    clearTimeout(timeoutHandle!);
+    clearTimeout(warnHandle!);
+    throw error;
+  }
+}
+
+/**
+ * Validate file content against limits
+ */
+function validateFileContent(
+  content: string,
+  filePath: string,
+  limits: IndexingLimits,
+): { valid: boolean; reason?: string; details?: string } {
+  const lines = content.split('\n');
+
+  // Check line count
+  if (lines.length > limits.maxLineCount) {
+    return {
+      valid: false,
+      reason: 'lines',
+      details: `Exceeded max line count (${lines.length} > ${limits.maxLineCount})`,
+    };
+  }
+
+  // Check max line length
+  const maxLineLen = Math.max(...lines.map((l) => l.length));
+  if (maxLineLen > limits.maxLineLength) {
+    return {
+      valid: false,
+      reason: 'line-length',
+      details: `Line too long (${maxLineLen} > ${limits.maxLineLength} chars)`,
+    };
+  }
+
+  return { valid: true };
+}
 
 /**
  * Calculate hash of file content
@@ -170,66 +259,154 @@ function getLanguage(filePath: string): string | undefined {
 }
 
 /**
- * Index a single file
+ * Index a single file with defensive safeguards
  */
-export async function indexFile(filePath: string, projectRoot: string): Promise<FileIndex | null> {
+export async function indexFile(
+  filePath: string,
+  projectRoot: string,
+  limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
+  warnings?: IndexingWarning[],
+): Promise<FileIndex | null> {
+  const relativePath = path.relative(projectRoot, filePath);
+
   try {
-    // Check if file should be ignored
-    const relativePath = path.relative(projectRoot, filePath);
-    if (shouldIgnore(relativePath)) return null;
+    // Wrap entire operation in timeout
+    return await withTimeout(
+      indexFileUnsafe(filePath, projectRoot, limits, warnings),
+      limits.fileTimeout,
+      `Indexing ${relativePath}`,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Timeout:')) {
+      // Log timeout warning
+      if (warnings) {
+        warnings.push({
+          file: relativePath,
+          reason: 'timeout',
+          details: `File indexing timed out after ${limits.fileTimeout}ms`,
+          timestamp: Date.now(),
+        });
+      }
+      return null;
+    }
 
-    // Check if file is binary
-    if (isBinaryFile(filePath)) return null;
+    if (limits.skipOnError) {
+      if (warnings) {
+        warnings.push({
+          file: relativePath,
+          reason: 'error',
+          details: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: Date.now(),
+        });
+      }
+      return null;
+    }
 
-    // Get file stats
-    const stats = await fs.stat(filePath);
-    if (!stats.isFile()) return null;
+    throw error;
+  }
+}
 
-    // Skip files larger than 1MB for now
-    if (stats.size > 1024 * 1024) return null;
+/**
+ * Internal file indexing implementation (without timeout wrapper)
+ */
+async function indexFileUnsafe(
+  filePath: string,
+  projectRoot: string,
+  limits: IndexingLimits,
+  warnings?: IndexingWarning[],
+): Promise<FileIndex | null> {
+  const relativePath = path.relative(projectRoot, filePath);
 
-    // Read file content
-    const content = await fs.readFile(filePath, 'utf-8');
-    const lines = content.split('\n').length;
+  // Check if file should be ignored
+  if (shouldIgnore(relativePath)) return null;
 
-    // Calculate hash
-    const hash = crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
+  // Check if file is binary
+  if (isBinaryFile(filePath)) return null;
 
-    // Get language
-    const language = getLanguage(filePath);
+  // Get file stats
+  const stats = await fs.stat(filePath);
+  if (!stats.isFile()) return null;
 
-    // Create metadata
-    const metadata: FileMetadata = {
-      path: relativePath,
-      absolutePath: filePath,
-      size: stats.size,
-      mtime: stats.mtimeMs,
-      hash,
-      language,
-      lines,
-    };
+  // Check file size
+  if (stats.size > limits.maxFileSize) {
+    if (warnings) {
+      warnings.push({
+        file: relativePath,
+        reason: 'size',
+        details: `File too large (${stats.size} > ${limits.maxFileSize} bytes)`,
+        timestamp: Date.now(),
+      });
+    }
+    return null;
+  }
 
-    // Extract symbols if language is supported
-    let symbols: Symbol[] = [];
-    let imports: string[] = [];
-    let exports: string[] = [];
+  // Read file content
+  const content = await fs.readFile(filePath, 'utf-8');
 
-    if (language && isLanguageSupported(language)) {
+  // Validate content
+  const validation = validateFileContent(content, filePath, limits);
+  if (!validation.valid) {
+    if (warnings) {
+      warnings.push({
+        file: relativePath,
+        reason: validation.reason as IndexingWarning['reason'],
+        details: validation.details || 'Validation failed',
+        timestamp: Date.now(),
+      });
+    }
+    return null;
+  }
+
+  const lines = content.split('\n').length;
+
+  // Calculate hash
+  const hash = crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
+
+  // Get language
+  const language = getLanguage(filePath);
+
+  // Create metadata
+  const metadata: FileMetadata = {
+    path: relativePath,
+    absolutePath: filePath,
+    size: stats.size,
+    mtime: stats.mtimeMs,
+    hash,
+    language,
+    lines,
+  };
+
+  // Extract symbols if language is supported
+  let symbols: Symbol[] = [];
+  let imports: string[] = [];
+  let exports: string[] = [];
+
+  if (language && isLanguageSupported(language)) {
+    try {
       symbols = extractSymbols(content, language);
       imports = extractImports(content, language);
       exports = extractExports(content, language);
+    } catch (error) {
+      // If symbol extraction fails, log but continue with empty results
+      if (warnings) {
+        warnings.push({
+          file: relativePath,
+          reason: 'regex-timeout',
+          details:
+            'Symbol extraction failed: ' +
+            (error instanceof Error ? error.message : 'Unknown error'),
+          timestamp: Date.now(),
+        });
+      }
     }
-
-    return {
-      metadata,
-      symbols,
-      imports,
-      exports,
-    };
-  } catch {
-    // Skip files that can't be read or processed
-    return null;
   }
+
+  return {
+    metadata,
+    symbols,
+    imports,
+    exports,
+  };
 }
 
 /**
@@ -277,21 +454,33 @@ async function collectFiles(
   maxDepth: number,
   currentDepth: number,
   files: string[],
+  visited: Set<string>,
 ) {
   if (currentDepth >= maxDepth) return;
 
   try {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    // Resolve real path to detect loops
+    const realPath = await fs.realpath(dirPath);
+    if (visited.has(realPath)) return;
+    visited.add(realPath);
+
+    const entries = await fs.readdir(realPath, { withFileTypes: true });
 
     for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
+      const fullPath = path.join(realPath, entry.name);
+
+      // Calculate relative path from project root for ignore checking
+      // Note: fullPath is now based on realPath, which might be outside projectRoot if we followed a symlink
+      // So we should be careful.
+      // If we strictly don't want to follow symlinks out of project, we should check that.
+      // But for now, let's just stick to preventing loops.
       const relativePath = path.relative(projectRoot, fullPath);
 
       // Skip ignored paths
       if (shouldIgnore(relativePath)) continue;
 
       if (entry.isDirectory()) {
-        await collectFiles(fullPath, projectRoot, maxDepth, currentDepth + 1, files);
+        await collectFiles(fullPath, projectRoot, maxDepth, currentDepth + 1, files, visited);
       } else if (entry.isFile() && !isBinaryFile(fullPath)) {
         files.push(fullPath);
       }
@@ -305,28 +494,40 @@ async function collectFiles(
  * Index all files in a directory recursively
  * Uses parallel processing for performance
  */
-export async function indexDirectory(
+/**
+ * Scan directory recursively to get all files (without indexing)
+ */
+export async function scanDirectory(
   dirPath: string,
   projectRoot: string,
   maxDepth: number = 10,
-  _currentDepth: number = 0, // Kept for signature compatibility, unused in new impl
+): Promise<string[]> {
+  const files: string[] = [];
+  const visited = new Set<string>();
+  await collectFiles(dirPath, projectRoot, maxDepth, 0, files, visited);
+  return files;
+}
+
+/**
+ * Index a specific list of files
+ */
+export async function indexFiles(
+  files: string[],
+  projectRoot: string,
   progressCallback?: ProgressCallback,
   progressState?: { current: number; total: number },
-  concurrency: number = os.cpus().length, // Default to CPU count
+  concurrency: number = os.cpus().length,
   onFileIndexed?: (file: FileIndex) => Promise<void> | void,
+  limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
+  warnings?: IndexingWarning[],
 ): Promise<Record<string, FileIndex>> {
   const fileIndexes: Record<string, FileIndex> = {};
-  const files: string[] = [];
 
-  // Step 1: Collect all files first (fast scanning)
-  await collectFiles(dirPath, projectRoot, maxDepth, 0, files);
-
-  // Step 2: Process files in parallel
   await limitConcurrency(files, concurrency, async (fullPath) => {
     const relativePath = path.relative(projectRoot, fullPath);
 
-    // Index file
-    const fileIndex = await indexFile(fullPath, projectRoot);
+    // Index file with defensive limits and warning tracking
+    const fileIndex = await indexFile(fullPath, projectRoot, limits, warnings);
 
     if (fileIndex) {
       fileIndexes[relativePath] = fileIndex;
@@ -349,6 +550,38 @@ export async function indexDirectory(
   });
 
   return fileIndexes;
+}
+
+/**
+ * Index all files in a directory recursively
+ * Uses parallel processing for performance
+ */
+export async function indexDirectory(
+  dirPath: string,
+  projectRoot: string,
+  maxDepth: number = 10,
+  _currentDepth: number = 0, // Kept for signature compatibility, unused in new impl
+  progressCallback?: ProgressCallback,
+  progressState?: { current: number; total: number },
+  concurrency: number = os.cpus().length, // Default to CPU count
+  onFileIndexed?: (file: FileIndex) => Promise<void> | void,
+  limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
+  warnings?: IndexingWarning[],
+): Promise<Record<string, FileIndex>> {
+  // Step 1: Collect files
+  const files = await scanDirectory(dirPath, projectRoot, maxDepth);
+
+  // Step 2: Index files
+  return indexFiles(
+    files,
+    projectRoot,
+    progressCallback,
+    progressState,
+    concurrency,
+    onFileIndexed,
+    limits,
+    warnings,
+  );
 }
 
 /**
