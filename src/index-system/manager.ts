@@ -132,7 +132,6 @@ export class IndexManager {
     }
 
     const startTime = Date.now();
-    let filesUpdated = 0;
 
     // Check each indexed file for changes
     for (const [relativePath, fileIndex] of Object.entries(this.index.files)) {
@@ -147,7 +146,6 @@ export class IndexManager {
         const newIndex = await indexFile(absolutePath, this.projectRoot);
         if (newIndex) {
           this.index.files[relativePath] = newIndex;
-          filesUpdated++;
         } else {
           // File was deleted or is now ignored
           delete this.index.files[relativePath];

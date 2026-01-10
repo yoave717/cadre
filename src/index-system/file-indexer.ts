@@ -191,7 +191,7 @@ export async function indexFile(filePath: string, projectRoot: string): Promise<
       imports,
       exports,
     };
-  } catch (error) {
+  } catch {
     // Skip files that can't be read or processed
     return null;
   }
@@ -226,7 +226,7 @@ export async function countFiles(
         count++;
       }
     }
-  } catch (error) {
+  } catch {
     // Skip directories that can't be read
   }
 
@@ -288,7 +288,7 @@ export async function indexDirectory(
         }
       }
     }
-  } catch (error) {
+  } catch {
     // Skip directories that can't be read
   }
 

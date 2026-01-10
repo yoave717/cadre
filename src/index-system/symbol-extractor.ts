@@ -111,7 +111,6 @@ export function extractSymbols(content: string, language: string): Symbol[] {
   if (!patterns) return [];
 
   const symbols: Symbol[] = [];
-  const lines = content.split('\n');
 
   const extractWithPattern = (
     pattern: RegExp,

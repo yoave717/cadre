@@ -2,7 +2,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import zlib from 'zlib';
+import { promisify } from 'util';
 import type { ProjectIndex } from './types.js';
+
+const gzip = promisify(zlib.gzip);
+const gunzip = promisify(zlib.gunzip);
 
 const INDEX_DIR = path.join(os.homedir(), '.cadre', 'indexes');
 
@@ -42,12 +47,22 @@ async function ensureIndexDir(projectPath: string): Promise<void> {
 
 /**
  * Load index from disk
+ * Supports both compressed (new) and uncompressed (legacy) formats
  */
 export async function loadIndex(projectPath: string): Promise<ProjectIndex | null> {
   try {
     const indexFile = getIndexFile(projectPath);
-    const data = await fs.readFile(indexFile, 'utf-8');
-    return JSON.parse(data) as ProjectIndex;
+    const data = await fs.readFile(indexFile);
+
+    // Try to decompress (new format)
+    try {
+      const decompressed = await gunzip(data);
+      return JSON.parse(decompressed.toString('utf-8')) as ProjectIndex;
+    } catch {
+      // Fallback to uncompressed JSON (legacy format)
+      // This provides backward compatibility with existing indexes
+      return JSON.parse(data.toString('utf-8')) as ProjectIndex;
+    }
   } catch {
     // Index doesn't exist or is invalid
     return null;
@@ -55,12 +70,20 @@ export async function loadIndex(projectPath: string): Promise<ProjectIndex | nul
 }
 
 /**
- * Save index to disk
+ * Save index to disk with gzip compression
  */
 export async function saveIndex(index: ProjectIndex): Promise<void> {
   await ensureIndexDir(index.projectRoot);
   const indexFile = getIndexFile(index.projectRoot);
-  await fs.writeFile(indexFile, JSON.stringify(index, null, 2), 'utf-8');
+
+  // Minified JSON (no pretty print for smaller size)
+  const json = JSON.stringify(index);
+
+  // Gzip compress for 60-70% size reduction
+  const compressed = await gzip(json);
+
+  // Write compressed data
+  await fs.writeFile(indexFile, compressed);
 }
 
 /**
@@ -89,14 +112,16 @@ export async function listIndexedProjects(): Promise<
     for (const entry of entries) {
       if (entry.isDirectory()) {
         try {
-          const indexFile = path.join(INDEX_DIR, entry.name, 'index.json');
-          const data = await fs.readFile(indexFile, 'utf-8');
-          const index = JSON.parse(data) as ProjectIndex;
-          projects.push({
-            path: index.projectRoot,
-            hash: entry.name,
-            indexed_at: index.indexed_at,
-          });
+          const projectPath = path.join(INDEX_DIR, entry.name);
+          // Use loadIndex to handle both compressed and uncompressed formats
+          const index = await loadIndex(projectPath);
+          if (index) {
+            projects.push({
+              path: index.projectRoot,
+              hash: entry.name,
+              indexed_at: index.indexed_at,
+            });
+          }
         } catch {
           // Skip invalid indexes
         }
