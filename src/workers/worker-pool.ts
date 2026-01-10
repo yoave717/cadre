@@ -203,8 +203,33 @@ Remember: Other workers are handling other tasks in parallel. Don't worry about 
    * Execute multiple tasks in parallel
    */
   async executeParallel(tasks: SubTask[]): Promise<TaskResult[]> {
-    const promises = tasks.map((task) => this.executeTask(task));
-    return Promise.all(promises);
+    const results: TaskResult[] = [];
+    const queue = [...tasks];
+    const activeWorkers = Math.min(tasks.length, this.config.maxWorkers);
+    const workerPromises: Promise<void>[] = [];
+
+    const processNext = async () => {
+      while (queue.length > 0) {
+        const task = queue.shift();
+        if (task) {
+          const result = await this.executeTask(task);
+          results.push(result);
+        }
+      }
+    };
+
+    for (let i = 0; i < activeWorkers; i++) {
+      workerPromises.push(processNext());
+    }
+
+    await Promise.all(workerPromises);
+
+    // Restore original order
+    return results.sort((a, b) => {
+      const idxA = tasks.findIndex((t) => t.id === a.taskId);
+      const idxB = tasks.findIndex((t) => t.id === b.taskId);
+      return idxA - idxB;
+    });
   }
 
   /**

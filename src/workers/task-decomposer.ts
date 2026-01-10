@@ -207,6 +207,6 @@ export class TaskDecomposer {
     const isLong = userRequest.length > 100;
     const hasMultipleItems = (userRequest.match(/,/g) || []).length >= 2;
 
-    return hasKeywords || (isLong && hasMultipleItems);
+    return hasKeywords || hasMultipleItems || isLong;
   }
 }

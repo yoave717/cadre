@@ -3,6 +3,15 @@ import { WorkerPool } from '../../src/workers/worker-pool.js';
 import type { SubTask, WorkerPoolConfig } from '../../src/workers/types.js';
 
 // Mock Agent
+// Mock Agent
+const mockChatGenerator = vi.fn();
+// Default behavior
+mockChatGenerator.mockImplementation(async function* () {
+  yield { type: 'text_delta', content: 'Task executed' };
+  yield { type: 'text_done', content: 'Task executed successfully' };
+  yield { type: 'turn_done' };
+});
+
 vi.mock('../../src/agent/index.js', () => ({
   Agent: class MockAgent {
     private context?: string;
@@ -15,11 +24,12 @@ vi.mock('../../src/agent/index.js', () => ({
       return this.context;
     }
 
-    async *chat(_userInput: string) {
-      // Simulate successful execution
-      yield { type: 'text_delta', content: 'Task executed' };
-      yield { type: 'text_done', content: 'Task executed successfully' };
-      yield { type: 'turn_done' };
+    async *chat(input: string, signal?: AbortSignal) {
+      if (signal?.aborted) {
+        throw new Error('Aborted');
+      }
+      // Delegate to the mock function
+      yield* mockChatGenerator(input, signal);
     }
   },
 }));
@@ -176,18 +186,12 @@ describe('WorkerPool', () => {
 
   describe('error handling', () => {
     it('should handle task errors gracefully', async () => {
-      // Mock Agent to throw error
-      vi.mock('../../src/agent/index.js', () => ({
-        Agent: class MockAgent {
-          setExecutionContext() {}
-          getExecutionContext() {
-            return undefined;
-          }
-          async *chat() {
-            yield { type: 'error', message: 'Simulated error' };
-          }
-        },
-      }));
+      // Configure Mock Agent to throw error
+      mockChatGenerator.mockImplementationOnce(async function* () {
+        yield { type: 'error', message: 'Simulated error' };
+      });
+
+      // We don't need to re-mock the module, just change the implementation of the generator spy.
 
       const pool = new WorkerPool(config);
       const task: SubTask = {
