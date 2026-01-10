@@ -1,0 +1,267 @@
+/**
+ * Index-aware tools for fast search and lookup
+ */
+
+import path from 'path';
+import chalk from 'chalk';
+import { IndexManager } from '../index-system/index.js';
+
+let indexManager: IndexManager | null = null;
+
+/**
+ * Get or create index manager for current directory
+ */
+function getIndexManager(): IndexManager {
+  if (!indexManager) {
+    indexManager = new IndexManager(process.cwd());
+  }
+  return indexManager;
+}
+
+/**
+ * Search for symbols in the indexed codebase
+ */
+export async function searchSymbols(
+  query: string,
+  options: { limit?: number } = {},
+): Promise<string> {
+  const manager = getIndexManager();
+
+  // Try to load existing index
+  const loaded = await manager.load();
+
+  if (!loaded) {
+    return chalk.yellow(
+      'No index found. Run the build_index tool first to create an index of your project.',
+    );
+  }
+
+  const results = manager.searchSymbols(query, options.limit || 50);
+
+  if (results.length === 0) {
+    return `No symbols found matching: ${query}`;
+  }
+
+  const output: string[] = [];
+  output.push(`Found ${results.length} symbol${results.length === 1 ? '' : 's'}:\n`);
+
+  for (const result of results) {
+    const { path: filePath, line, symbol } = result;
+    const typeColor =
+      symbol!.type === 'function'
+        ? chalk.blue
+        : symbol!.type === 'class'
+          ? chalk.green
+          : symbol!.type === 'interface'
+            ? chalk.cyan
+            : chalk.gray;
+
+    output.push(
+      `${chalk.gray(filePath)}:${chalk.yellow(line)} - ${typeColor(symbol!.type)} ${chalk.bold(symbol!.name)}${symbol!.exported ? chalk.magenta(' (exported)') : ''}`,
+    );
+    if (symbol!.signature) {
+      output.push(`  ${chalk.dim(symbol!.signature)}`);
+    }
+  }
+
+  return output.join('\n');
+}
+
+/**
+ * Find files by path or name pattern
+ */
+export async function findFiles(pattern: string, options: { limit?: number } = {}): Promise<string> {
+  const manager = getIndexManager();
+
+  // Try to load existing index
+  const loaded = await manager.load();
+
+  if (!loaded) {
+    return chalk.yellow(
+      'No index found. Run the build_index tool first to create an index of your project.',
+    );
+  }
+
+  const results = manager.findFiles(pattern, options.limit || 100);
+
+  if (results.length === 0) {
+    return `No files found matching: ${pattern}`;
+  }
+
+  const output: string[] = [];
+  output.push(`Found ${results.length} file${results.length === 1 ? '' : 's'}:\n`);
+
+  for (const filePath of results) {
+    output.push(chalk.gray(filePath));
+  }
+
+  return output.join('\n');
+}
+
+/**
+ * Build or rebuild the project index
+ */
+export async function buildIndex(): Promise<string> {
+  const manager = getIndexManager();
+
+  const output: string[] = [];
+  output.push(chalk.blue('Building project index...\n'));
+
+  const stats = await manager.buildIndex();
+
+  output.push(chalk.green('✓ Index built successfully!\n'));
+  output.push(`Files indexed: ${chalk.bold(stats.totalFiles.toString())}`);
+  output.push(`Symbols found: ${chalk.bold(stats.totalSymbols.toString())}`);
+  output.push(`Total size: ${chalk.bold((stats.totalSize / 1024).toFixed(2))} KB`);
+  output.push(`Duration: ${chalk.bold(stats.duration.toString())} ms\n`);
+
+  if (Object.keys(stats.languages).length > 0) {
+    output.push('Languages:');
+    for (const [lang, count] of Object.entries(stats.languages)) {
+      output.push(`  ${lang}: ${count} files`);
+    }
+  }
+
+  return output.join('\n');
+}
+
+/**
+ * Update the project index (incremental)
+ */
+export async function updateIndex(): Promise<string> {
+  const manager = getIndexManager();
+
+  // Try to load existing index
+  const loaded = await manager.load();
+
+  if (!loaded) {
+    return chalk.yellow('No existing index found. Use build_index to create a new index.');
+  }
+
+  const output: string[] = [];
+  output.push(chalk.blue('Updating project index...\n'));
+
+  const stats = await manager.updateIndex();
+
+  output.push(chalk.green('✓ Index updated successfully!\n'));
+  output.push(`Files indexed: ${chalk.bold(stats.totalFiles.toString())}`);
+  output.push(`Symbols found: ${chalk.bold(stats.totalSymbols.toString())}`);
+  output.push(`Duration: ${chalk.bold(stats.duration.toString())} ms`);
+
+  return output.join('\n');
+}
+
+/**
+ * Show index statistics
+ */
+export async function indexStats(): Promise<string> {
+  const manager = getIndexManager();
+
+  // Try to load existing index
+  const loaded = await manager.load();
+
+  if (!loaded) {
+    return chalk.yellow('No index found for this project.');
+  }
+
+  const stats = manager.getStats();
+
+  if (!stats) {
+    return 'Unable to get index statistics.';
+  }
+
+  const output: string[] = [];
+  output.push(chalk.bold('Project Index Statistics\n'));
+  output.push(`Total files: ${chalk.blue(stats.totalFiles.toString())}`);
+  output.push(`Total symbols: ${chalk.blue(stats.totalSymbols.toString())}`);
+  output.push(`Total size: ${chalk.blue((stats.totalSize / 1024).toFixed(2))} KB`);
+  output.push(
+    `Last indexed: ${chalk.blue(new Date(stats.indexed_at).toLocaleString())}\n`,
+  );
+
+  if (Object.keys(stats.languages).length > 0) {
+    output.push(chalk.bold('Languages:'));
+    for (const [lang, count] of Object.entries(stats.languages)) {
+      output.push(`  ${lang}: ${count} files`);
+    }
+  }
+
+  return output.join('\n');
+}
+
+/**
+ * Get symbols in a specific file
+ */
+export async function getFileSymbols(filePath: string): Promise<string> {
+  const manager = getIndexManager();
+
+  // Try to load existing index
+  const loaded = await manager.load();
+
+  if (!loaded) {
+    return chalk.yellow('No index found. Run the build_index tool first.');
+  }
+
+  // Convert to relative path if absolute
+  const relativePath = path.isAbsolute(filePath)
+    ? path.relative(process.cwd(), filePath)
+    : filePath;
+
+  const symbols = manager.getFileSymbols(relativePath);
+
+  if (symbols.length === 0) {
+    return `No symbols found in: ${filePath}`;
+  }
+
+  const output: string[] = [];
+  output.push(`Symbols in ${chalk.bold(filePath)}:\n`);
+
+  // Group symbols by type
+  const byType: Record<string, typeof symbols> = {};
+  for (const symbol of symbols) {
+    if (!byType[symbol.type]) {
+      byType[symbol.type] = [];
+    }
+    byType[symbol.type].push(symbol);
+  }
+
+  for (const [type, syms] of Object.entries(byType)) {
+    output.push(chalk.bold(`${type}s:`));
+    for (const symbol of syms) {
+      output.push(
+        `  ${chalk.gray(symbol.line.toString())} ${symbol.name}${symbol.exported ? chalk.magenta(' (exported)') : ''}`,
+      );
+    }
+  }
+
+  return output.join('\n');
+}
+
+/**
+ * Find files that import a specific module
+ */
+export async function findImporters(moduleName: string): Promise<string> {
+  const manager = getIndexManager();
+
+  // Try to load existing index
+  const loaded = await manager.load();
+
+  if (!loaded) {
+    return chalk.yellow('No index found. Run the build_index tool first.');
+  }
+
+  const importers = manager.findImporters(moduleName);
+
+  if (importers.length === 0) {
+    return `No files found importing: ${moduleName}`;
+  }
+
+  const output: string[] = [];
+  output.push(`Files importing ${chalk.bold(moduleName)}:\n`);
+
+  for (const filePath of importers) {
+    output.push(chalk.gray(filePath));
+  }
+
+  return output.join('\n');
+}

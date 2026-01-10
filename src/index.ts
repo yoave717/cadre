@@ -5,6 +5,7 @@ import { startInteractiveSession, runSinglePrompt } from './ui/interactive.js';
 import { clearConfig, setConfig, getConfig, isConfigValid } from './config.js';
 import { getPermissionManager, listPermissions, clearAllPermissions } from './permissions/index.js';
 import { LanguageDetector } from './tools/language-detector.js';
+import { IndexManager, listIndexedProjects, clearAllIndexes, getIndexStats } from './index-system/index.js';
 
 const program = new Command();
 
@@ -176,6 +177,93 @@ program
     } catch (error) {
       const err = error as Error;
       console.error(chalk.red(`Error detecting language: ${err.message}`));
+    }
+  });
+
+// Index command
+program
+  .command('index')
+  .description('Manage project index for fast search')
+  .argument('[action]', 'Action: build, update, stats, list, clear')
+  .option('--path <path>', 'Project path (defaults to current directory)')
+  .action(async (action, options) => {
+    const projectPath = options.path || process.cwd();
+
+    try {
+      if (!action || action === 'build') {
+        // Build index
+        console.log(chalk.blue('Building project index...'));
+        const manager = new IndexManager(projectPath);
+        const stats = await manager.buildIndex();
+
+        console.log(chalk.green('\n✓ Index built successfully!\n'));
+        console.log(`Files indexed: ${chalk.bold(stats.totalFiles.toString())}`);
+        console.log(`Symbols found: ${chalk.bold(stats.totalSymbols.toString())}`);
+        console.log(`Total size: ${chalk.bold((stats.totalSize / 1024).toFixed(2))} KB`);
+        console.log(`Duration: ${chalk.bold(stats.duration.toString())} ms\n`);
+
+        if (Object.keys(stats.languages).length > 0) {
+          console.log(chalk.bold('Languages:'));
+          for (const [lang, count] of Object.entries(stats.languages)) {
+            console.log(`  ${lang}: ${count} files`);
+          }
+        }
+      } else if (action === 'update') {
+        // Update index
+        console.log(chalk.blue('Updating project index...'));
+        const manager = new IndexManager(projectPath);
+        const loaded = await manager.load();
+
+        if (!loaded) {
+          console.log(chalk.yellow('No existing index found. Use "build" to create one.'));
+          return;
+        }
+
+        const stats = await manager.updateIndex();
+        console.log(chalk.green('\n✓ Index updated successfully!\n'));
+        console.log(`Files indexed: ${chalk.bold(stats.totalFiles.toString())}`);
+        console.log(`Symbols found: ${chalk.bold(stats.totalSymbols.toString())}`);
+        console.log(`Duration: ${chalk.bold(stats.duration.toString())} ms`);
+      } else if (action === 'stats') {
+        // Show stats
+        const stats = await getIndexStats(projectPath);
+
+        if (!stats) {
+          console.log(chalk.yellow('No index found for this project.'));
+          return;
+        }
+
+        console.log(chalk.bold('\nProject Index Statistics\n'));
+        console.log(`Total files: ${chalk.blue(stats.files.toString())}`);
+        console.log(`Total symbols: ${chalk.blue(stats.symbols.toString())}`);
+        console.log(`Index size: ${chalk.blue((stats.size / 1024).toFixed(2))} KB`);
+        console.log(`Last indexed: ${chalk.blue(new Date(stats.indexed_at).toLocaleString())}\n`);
+      } else if (action === 'list') {
+        // List all indexed projects
+        const projects = await listIndexedProjects();
+
+        if (projects.length === 0) {
+          console.log(chalk.dim('No indexed projects found.'));
+          return;
+        }
+
+        console.log(chalk.bold('\nIndexed Projects:\n'));
+        for (const project of projects) {
+          console.log(chalk.blue(`  ${project.path}`));
+          console.log(chalk.dim(`    Hash: ${project.hash}`));
+          console.log(chalk.dim(`    Indexed: ${new Date(project.indexed_at).toLocaleString()}`));
+        }
+        console.log('');
+      } else if (action === 'clear') {
+        // Clear all indexes
+        await clearAllIndexes();
+        console.log(chalk.green('All indexes cleared.'));
+      } else {
+        console.log(chalk.yellow('Usage: cadre index [build|update|stats|list|clear]'));
+      }
+    } catch (error) {
+      const err = error as Error;
+      console.error(chalk.red(`Error managing index: ${err.message}`));
     }
   });
 
