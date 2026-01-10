@@ -47,6 +47,7 @@ describe('SaveCommand', () => {
       maxSessionTokens: 0,
       tokenCostInput: 0,
       tokenCostOutput: 0,
+      maxTokensPerMinute: 0,
     });
   });
 
@@ -84,6 +85,7 @@ describe('SaveCommand', () => {
       maxSessionTokens: 0,
       tokenCostInput: 0,
       tokenCostOutput: 0,
+      maxTokensPerMinute: 0,
     });
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
@@ -105,6 +107,7 @@ describe('SaveCommand', () => {
       maxSessionTokens: 0,
       tokenCostInput: 0,
       tokenCostOutput: 0,
+      maxTokensPerMinute: 0,
     });
 
     vi.mocked(fs.existsSync).mockReturnValue(true);

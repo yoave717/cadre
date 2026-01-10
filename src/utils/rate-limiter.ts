@@ -69,7 +69,12 @@ export class RateLimiter {
         const available = this.getAvailableTokens();
 
         // If enough tokens available, grant immediately
-        if (available >= request.tokens) {
+        // OR if the request is larger than the entire bucket size, grant it if the bucket is full
+        // (This logic remains for safety against infinite loops, though optimistic reservation makes it less likely to be hit)
+        if (
+          available >= request.tokens ||
+          (request.tokens > this.tokensPerMinute && available >= this.tokensPerMinute)
+        ) {
           this.tokensUsed += request.tokens;
           this.waitingQueue.shift();
           request.resolve();
@@ -144,12 +149,22 @@ export class RateLimiter {
     const elapsed = now - this.windowStart;
 
     if (elapsed >= this.windowMs) {
-      if (this.verbose) {
-        console.log(`[RateLimiter] Window reset. Previous usage: ${this.tokensUsed} tokens`);
-      }
+      // Calculate how many windows have passed
+      const windowsPassed = Math.floor(elapsed / this.windowMs);
 
-      this.tokensUsed = 0;
-      this.windowStart = now;
+      // Reduce used tokens by the capacity of the passed windows
+      // This effectively "pays off" the debt over time
+      const tokensToRestore = windowsPassed * this.tokensPerMinute;
+      this.tokensUsed = Math.max(0, this.tokensUsed - tokensToRestore);
+
+      // Advance window start time
+      this.windowStart += windowsPassed * this.windowMs;
+
+      if (this.verbose) {
+        console.log(
+          `[RateLimiter] Window reset (${windowsPassed}x). New usage: ${this.tokensUsed}`,
+        );
+      }
     }
   }
 

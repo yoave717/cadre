@@ -11,6 +11,7 @@ import chalk from 'chalk';
 export interface CoordinatorConfig extends WorkerPoolConfig {
   verbose?: boolean;
   onProgress?: (message: string) => void;
+  onWorkerMessage?: (message: WorkerMessage) => void;
 }
 
 export interface ExecutionSummary {
@@ -36,6 +37,27 @@ export class TaskCoordinator {
     this.pool.on('worker-message', (message: WorkerMessage) => {
       this.handleWorkerMessage(message);
     });
+  }
+
+  /**
+   * Set a handler for worker messages
+   */
+  setWorkerMessageHandler(handler?: (message: WorkerMessage) => void) {
+    this.config.onWorkerMessage = handler;
+  }
+
+  /**
+   * Set verbose mode
+   */
+  setVerbose(verbose: boolean) {
+    this.config.verbose = verbose;
+  }
+
+  /**
+   * Set progress handler
+   */
+  setOnProgress(handler?: (message: string) => void) {
+    this.config.onProgress = handler;
   }
 
   /**
@@ -158,6 +180,11 @@ export class TaskCoordinator {
    * Handle worker messages for progress updates
    */
   private handleWorkerMessage(message: WorkerMessage): void {
+    // Pass raw message to callback if provided
+    if (this.config.onWorkerMessage) {
+      this.config.onWorkerMessage(message);
+    }
+
     if (!this.config.verbose) return;
 
     switch (message.type) {

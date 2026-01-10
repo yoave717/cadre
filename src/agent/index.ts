@@ -215,8 +215,14 @@ Guidelines:
       while (true) {
         // Estimate tokens for this request
         const estimatedInputTokens = estimateConversationTokens(this.history);
-        const estimatedOutputTokens = config.maxOutputTokens || 4000;
-        const estimatedTotalTokens = estimatedInputTokens + estimatedOutputTokens;
+
+        // Optimistic reservation: assume output will be smaller (1000 tokens) to allow parallel execution
+        // The RateLimiter will adjust based on actual usage later ("debt tracking")
+        const optimisticOutputTokens = Math.min(config.maxOutputTokens || 4000, 1000);
+        const estimatedTotalTokens = estimatedInputTokens + optimisticOutputTokens;
+
+        // Note: we still pass the FULL maxOutputTokens to the API to avoid truncation,
+        // we just reserve less from the rate limiter to be optimistic.
 
         // Acquire tokens from rate limiter if available
         if (this.rateLimiter) {

@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "tsc && tsup",
-    "watch": "tsc --watch && tsup --watch",
+    "watch": "tsup --watch",
     "start": "node dist/index.js start",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",

@@ -9,7 +9,11 @@ import { Agent, HistoryItem } from '../agent/index.js';
 import { saveConversation } from '../commands/save.js';
 import { loadConversation, listConversations } from '../commands/load.js';
 import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
-import { TaskCoordinator } from '../workers/index.js';
+import { WorkerStatusRenderer } from './worker-renderer.js';
+import { TaskCoordinator } from '../workers/task-coordinator.js';
+import { getConfig } from '../config.js';
+import { BranchManager } from '../context/branch-manager.js';
+import { SessionManager } from '../context/session-manager.js';
 
 /**
  * Display a cool CLI entrance banner
@@ -22,7 +26,7 @@ function displayBanner(): void {
    ${chalk.cyan('║')}     ${chalk.bold.blue('██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔════╝')}     ${chalk.cyan('║')}
    ${chalk.cyan('║')}     ${chalk.bold.blue('██║  ╚═╝███████║██║  ██║██████╔╝█████╗')}       ${chalk.cyan('║')}
    ${chalk.cyan('║')}     ${chalk.bold.blue('██║  ██╗██╔══██║██║  ██║██╔══██╗██╔══╝')}       ${chalk.cyan('║')}
-   ${chalk.cyan('║')}     ${chalk.bold.blue('╚█████╔╝██║  ██║██████╔╝██║  ██║███████╗')}     ${chalk.cyan('║')}
+   ${chalk.cyan('║')}     ${chalk.bold.blue('╚█████╔╝██║  ██║██████╔╝█████╗')}     ${chalk.cyan('║')}
    ${chalk.cyan('║')}      ${chalk.bold.blue('╚════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝')}     ${chalk.cyan('║')}
    ${chalk.cyan('║')}                                                       ${chalk.cyan('║')}
    ${chalk.cyan('║')}          ${chalk.dim('Your AI-Powered Development Assistant')}         ${chalk.cyan('║')}
@@ -33,44 +37,60 @@ function displayBanner(): void {
 `;
   console.log(banner);
 }
-import { getConfig } from '../config.js';
-import { BranchManager } from '../context/branch-manager.js';
-import { SessionManager } from '../context/session-manager.js';
 
 // Configure marked for terminal rendering
 marked.setOptions({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   renderer: new TerminalRenderer() as any,
 });
-
-/**
- * Process a prompt using multi-worker execution
- */
 async function processWithMultiWorker(
   prompt: string,
   coordinator: TaskCoordinator,
 ): Promise<string> {
-  const summary = await coordinator.execute(prompt);
+  const renderer = new WorkerStatusRenderer();
 
-  // Display the summary
-  console.log(coordinator.formatSummary(summary));
+  // Configure coordinator for interactive display
+  coordinator.setVerbose(false);
+  coordinator.setWorkerMessageHandler((msg) => renderer.update(msg));
+  coordinator.setOnProgress((message) => {
+    renderer.clear();
+    console.log(message);
+    // Renderer will redraw on next tick/interval
+  });
 
-  // Aggregate results
-  const successfulResults = summary.results.filter((r) => r.success && r.result);
-  if (successfulResults.length > 0) {
-    console.log(chalk.bold('\n📝 Aggregated Results:\n'));
-    for (const result of successfulResults) {
-      const task = summary.plan.subtasks.find((t) => t.id === result.taskId);
-      if (task) {
-        console.log(chalk.cyan(`Task: ${task.description}`));
-        console.log(result.result);
-        console.log(chalk.dim('---\n'));
+  renderer.start();
+
+  try {
+    const summary = await coordinator.execute(prompt);
+
+    // Stop renderer and clear its dynamic lines
+    renderer.stop();
+
+    // Display the summary
+    console.log(coordinator.formatSummary(summary));
+
+    // Aggregate results
+    const successfulResults = summary.results.filter((r) => r.success && r.result);
+    if (successfulResults.length > 0) {
+      console.log(chalk.bold('\n📝 Aggregated Results:\n'));
+      for (const result of successfulResults) {
+        const task = summary.plan.subtasks.find((t) => t.id === result.taskId);
+        if (task) {
+          console.log(chalk.cyan(`Task: ${task.description}`));
+          console.log(result.result);
+          console.log(chalk.dim('---\n'));
+        }
       }
     }
-  }
 
-  // Return combined results
-  return successfulResults.map((r) => r.result).join('\n\n');
+    // Return combined results
+    return successfulResults.map((r) => r.result).join('\n\n');
+  } finally {
+    // Restore coordinator configuration
+    coordinator.setVerbose(true);
+    coordinator.setWorkerMessageHandler(undefined);
+    coordinator.setOnProgress((message) => console.log(message));
+  }
 }
 
 /**
