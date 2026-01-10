@@ -4,6 +4,7 @@
  */
 
 export { IndexManager } from './manager.js';
+export { SqliteIndexManager } from './sqlite-manager.js';
 export {
   loadIndex,
   saveIndex,
