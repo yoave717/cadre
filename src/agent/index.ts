@@ -42,13 +42,44 @@ Guidelines:
 - When searching code, use glob for file patterns and grep for content search
 - Be concise in your responses`;
 
-  constructor() {
+  constructor(systemPrompt?: string) {
+    const config = getConfig();
+    if (systemPrompt) {
+      this.systemPrompt = systemPrompt;
+    } else if (config.systemPrompt) {
+      this.systemPrompt = config.systemPrompt;
+    }
+    // Else use default initialized in property
+
     this.history.push({
       role: 'system',
       content: this.systemPrompt,
       timestamp: Date.now(),
     });
     this.contextManager = getContextManager();
+  }
+
+  updateSystemPrompt(prompt: string) {
+    if (prompt.length > 2000) {
+      throw new Error(`System prompt exceeds 2000 characters (length: ${prompt.length})`);
+    }
+    this.systemPrompt = prompt;
+
+    // Update the system message in history (always the first message)
+    if (this.history.length > 0 && this.history[0].role === 'system') {
+      this.history[0].content = prompt;
+    } else {
+      // Should not happen if history initialized correctly
+      this.history.unshift({
+        role: 'system',
+        content: prompt,
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  getSystemPrompt(): string {
+    return this.systemPrompt;
   }
 
   async *chat(userInput: string): AsyncGenerator<AgentEvent> {

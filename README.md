@@ -132,6 +132,9 @@ cadre permissions list
 cadre permissions clear
 cadre permissions revoke /path/to/project
 
+# Detect language
+cadre detect
+
 # Reset configuration
 cadre reset
 ```

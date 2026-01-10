@@ -22,6 +22,7 @@ export interface ConfigSchema {
   modelName: string;
   maxContextTokens?: number;
   maxOutputTokens?: number;
+  systemPrompt?: string;
 }
 
 const config = new Conf<ConfigSchema>({
@@ -46,6 +47,7 @@ export const getConfig = (): ConfigSchema => {
     modelName: process.env.MODEL_NAME || process.env.OPENAI_MODEL || config.get('modelName'),
     maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || '', 10) || 128000,
     maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS || '', 10) || 16000,
+    systemPrompt: process.env.SYSTEM_PROMPT || config.get('systemPrompt'),
   };
 };
 

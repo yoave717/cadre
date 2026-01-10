@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { startInteractiveSession, runSinglePrompt } from './ui/interactive.js';
 import { clearConfig, setConfig, getConfig, isConfigValid } from './config.js';
 import { getPermissionManager, listPermissions, clearAllPermissions } from './permissions/index.js';
+import { LanguageDetector } from './tools/language-detector.js';
 
 const program = new Command();
 
@@ -15,6 +16,7 @@ program
   .option('-p, --print', 'Print response and exit (one-shot mode, no follow-up)')
   .option('-c, --continue', 'Continue in interactive mode after initial prompt')
   .option('--model <model>', 'Override model name for this session')
+  .option('--system <prompt>', 'Set system prompt/context')
   .action(async (prompt, options) => {
     // Check configuration
     const configStatus = isConfigValid();
@@ -33,17 +35,17 @@ program
       // Run with provided prompt
       if (options.print) {
         // One-shot mode: run prompt and exit
-        await runSinglePrompt(prompt);
+        await runSinglePrompt(prompt, options.system);
       } else if (options.continue) {
         // Run prompt then continue interactively
-        await startInteractiveSession(prompt);
+        await startInteractiveSession(prompt, options.system);
       } else {
         // Default: run prompt then continue interactively
-        await startInteractiveSession(prompt);
+        await startInteractiveSession(prompt, options.system);
       }
     } else {
       // No prompt provided, start interactive mode
-      await startInteractiveSession();
+      await startInteractiveSession(undefined, options.system);
     }
   });
 
@@ -121,6 +123,36 @@ program
       console.log(chalk.green(`Permissions revoked for: ${projectPath}`));
     } else {
       console.log(chalk.yellow('Usage: cadre permissions [list|clear|revoke <path>]'));
+    }
+  });
+
+// Detect command
+program
+  .command('detect')
+  .description('Detect project primary language')
+  .action(async () => {
+    try {
+      const detector = new LanguageDetector();
+      const result = await detector.detect();
+
+      console.log(chalk.bold('\nDetected Languages:'));
+
+      const sorted = Object.entries(result.percentages).sort(([, a], [, b]) => b - a);
+
+      for (const [lang, pct] of sorted) {
+        if (pct > 0) {
+          console.log(chalk.blue(`  ${lang} (${pct}%)`));
+        }
+      }
+
+      if (result.totalFiles === 0) {
+        console.log(chalk.yellow('  No recognized source files found.'));
+      }
+
+      console.log(chalk.dim(`\n  Scanned ${result.totalFiles} files.`));
+    } catch (error) {
+      const err = error as Error;
+      console.error(chalk.red(`Error detecting language: ${err.message}`));
     }
   });
 

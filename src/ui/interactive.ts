@@ -92,11 +92,11 @@ async function processPrompt(agent: Agent, prompt: string): Promise<string> {
 /**
  * Run a single prompt and exit (one-shot mode).
  */
-export const runSinglePrompt = async (prompt: string): Promise<void> => {
+export const runSinglePrompt = async (prompt: string, systemPrompt?: string): Promise<void> => {
   const config = getConfig();
   console.log(chalk.dim(`Model: ${config.modelName}\n`));
 
-  const agent = new Agent();
+  const agent = new Agent(systemPrompt);
 
   try {
     await processPrompt(agent, prompt);
@@ -110,7 +110,10 @@ export const runSinglePrompt = async (prompt: string): Promise<void> => {
 /**
  * Start an interactive session, optionally with an initial prompt.
  */
-export const startInteractiveSession = async (initialPrompt?: string): Promise<void> => {
+export const startInteractiveSession = async (
+  initialPrompt?: string,
+  systemPrompt?: string,
+): Promise<void> => {
   console.log(chalk.bold.blue('Welcome to Cadre'));
   console.log(chalk.dim('Type /help for commands, /exit to quit\n'));
 
@@ -123,7 +126,7 @@ export const startInteractiveSession = async (initialPrompt?: string): Promise<v
   }
   console.log(chalk.dim(`Model: ${config.modelName} | Endpoint: ${config.openaiBaseUrl}\n`));
 
-  const agent = new Agent();
+  const agent = new Agent(systemPrompt);
 
   // Process initial prompt if provided
   if (initialPrompt) {
@@ -226,7 +229,25 @@ async function handleSlashCommand(command: string, agent: Agent): Promise<boolea
       console.log(chalk.dim('  /config      - Show current configuration'));
       console.log(chalk.dim('  /stats       - Show context/token statistics'));
       console.log(chalk.dim('  /exit        - Exit the session'));
+      console.log(chalk.dim('  /system [prompt] - View or update system prompt'));
       console.log(chalk.dim('  /help        - Show this help\n'));
+      return true;
+
+    case 'system':
+      if (args.length === 0) {
+        console.log(chalk.bold('\nCurrent System Prompt:'));
+        console.log(chalk.dim(agent.getSystemPrompt()));
+        console.log('');
+      } else {
+        const newPrompt = args.join(' ');
+        try {
+          agent.updateSystemPrompt(newPrompt);
+          console.log(chalk.green('System prompt updated.'));
+        } catch (error) {
+          const err = error as Error;
+          console.log(chalk.red(`Error updating system prompt: ${err.message}`));
+        }
+      }
       return true;
 
     case 'history':

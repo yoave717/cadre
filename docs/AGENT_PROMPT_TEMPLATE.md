@@ -79,5 +79,6 @@ _These apply to ALL tasks in addition to the specific DoD above._
 - **Linting**: Code must pass `npm run lint`.
 - **Formatting**: Code must run `npm run format`.
 - **Testing**: Tests must pass (`npm test`).
+- **Build**: Code must pass `npm run build`.
 - **Safety**: Do not delete existing unrelated files.
 - **Dependencies**: Do not add new npm packages unless explicitly required by the user story.

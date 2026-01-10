@@ -32,7 +32,7 @@ describe('Agent History', () => {
   it('should initialize with system prompt and timestamp', () => {
     const agent = new Agent();
     const history = agent.getHistory();
-    
+
     expect(history.length).toBe(1);
     expect(history[0].role).toBe('system');
     expect(history[0].timestamp).toBeDefined();
@@ -44,7 +44,7 @@ describe('Agent History', () => {
   it('should clear history correctly', () => {
     const agent = new Agent();
     agent.clearHistory();
-    
+
     const history = agent.getHistory();
     expect(history.length).toBe(1);
     expect(history[0].role).toBe('system');
@@ -66,12 +66,14 @@ describe('Agent History', () => {
     // Simulate chat
     const iterator = agent.chat('User Message');
     // Consume iterator
-    for await (const _ of iterator) {}
+    for await (const chunk of iterator) {
+      void chunk;
+    }
 
     const history = agent.getHistory();
     // 0: System, 1: User, 2: Assistant
     expect(history.length).toBe(3);
-    
+
     // Check User message
     expect(history[1].role).toBe('user');
     expect(history[1].content).toBe('User Message');
