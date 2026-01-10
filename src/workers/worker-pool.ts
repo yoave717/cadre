@@ -5,7 +5,7 @@
 
 import { Agent } from '../agent/index.js';
 import type { WorkerState, SubTask, TaskResult, WorkerPoolConfig, WorkerMessage } from './types.js';
-import { EventEmitter } from 'events';
+import { EventEmitter, setMaxListeners } from 'events';
 
 interface WorkerInstance {
   id: string;
@@ -33,9 +33,14 @@ export class WorkerPool extends EventEmitter {
 
 Your role: Execute your assigned task independently and efficiently.
 
+Tools & Capabilities:
+- usage of "search_symbols" and "find_files" tools is PREFERRED over "grep" or "glob" for code navigation.
+- Use "grep" only when searching for specific string patterns not covered by the index (e.g. TODO comments, dynamic strings).
+
 Guidelines:
 - Focus ONLY on your specific assigned task
 - Read files before modifying them
+- PRIORITIZE using index-based tools (search_symbols, find_files) for exploring the codebase.
 - Use tools appropriately for your task
 - Be concise in your responses
 - Report completion clearly
@@ -99,6 +104,14 @@ Remember: Other workers are handling other tasks in parallel. Don't worry about 
 
     // Create abort controller for timeout
     worker.abortController = new AbortController();
+    try {
+      if (worker.abortController.signal) {
+        setMaxListeners(20, worker.abortController.signal);
+      }
+    } catch {
+      // Ignore if setMaxListeners is not supported
+    }
+
     const timeoutId = this.config.timeoutMs
       ? setTimeout(() => worker.abortController?.abort(), this.config.timeoutMs)
       : null;
