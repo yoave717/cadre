@@ -6,12 +6,11 @@
 export { IndexManager } from './manager';
 export { SqliteIndexManager } from './sqlite-manager';
 export {
-  loadIndex,
-  saveIndex,
   deleteIndex,
   listIndexedProjects,
   getIndexStats,
   clearAllIndexes,
+  clearProjectIndex,
   hashProjectPath,
 } from './storage';
 export type {
@@ -21,4 +20,6 @@ export type {
   ProjectIndex,
   IndexStats,
   SearchResult,
+  IndexingLimits,
+  IndexingWarning,
 } from './types';

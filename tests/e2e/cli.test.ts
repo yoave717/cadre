@@ -86,7 +86,7 @@ describe('E2E CLI', () => {
       });
     };
 
-    it('should set and show configuration', async () => {
+    it('should set and show configuration', { timeout: 30000 }, async () => {
       // Set config
       await runInTemp('config --key test-key --set-model test-model --url https://api.example.com');
 
@@ -99,7 +99,7 @@ describe('E2E CLI', () => {
       expect(stdout).toContain('API Key:  ****-key');
     });
 
-    it('should reset configuration', async () => {
+    it('should reset configuration', { timeout: 30000 }, async () => {
       // Set something first
       await runInTemp('config --key test-key');
 

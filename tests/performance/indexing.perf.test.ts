@@ -3,6 +3,7 @@ import { IndexManager } from '../../src/index-system/manager';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 
 describe('Indexing Performance', () => {
   let tmpDir: string;
@@ -21,6 +22,15 @@ describe('Indexing Performance', () => {
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
+
+    // Cleanup global index directory
+    const hash = crypto.createHash('sha256').update(tmpDir).digest('hex').slice(0, 16);
+    const indexDir = path.join(os.homedir(), '.cadre', 'indexes', hash);
+    try {
+      await fs.rm(indexDir, { recursive: true, force: true });
+    } catch {
+      // Ignore errors
+    }
   });
 
   it('should index 100 files in under 1 second', async () => {

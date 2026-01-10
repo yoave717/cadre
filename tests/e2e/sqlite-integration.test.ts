@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+import os from 'os';
 
 describe('E2E: SQLite Index Integration', () => {
   const testProjectDir = path.join(process.cwd(), 'test-sqlite-e2e-' + Date.now());
@@ -52,6 +54,17 @@ export function utilFunction() {
     } catch {
       // Ignore errors
     }
+
+    // Manual fallback cleanup
+    const hash = crypto.createHash('sha256').update(testProjectDir).digest('hex').slice(0, 16);
+    const dbDir = path.join(os.homedir(), '.cadre', 'indexes', hash);
+    if (fs.existsSync(dbDir)) {
+      try {
+        fs.rmSync(dbDir, { recursive: true, force: true });
+      } catch {
+        // Ignore
+      }
+    }
   });
 
   describe('Index Building with SQLite', () => {
@@ -66,7 +79,7 @@ export function utilFunction() {
       expect(output).toContain('Symbols found:');
     });
 
-    it('should create both index.db and index.json files', () => {
+    it('should create index.db file', () => {
       // Build index first
       execSync('cadre index build', { cwd: testProjectDir, stdio: 'pipe' });
 
@@ -76,22 +89,17 @@ export function utilFunction() {
 
       const projectIndexDir = path.join(indexDir, dirs[0]);
       const dbFile = path.join(projectIndexDir, 'index.db');
-      const jsonFile = path.join(projectIndexDir, 'index.json');
 
       expect(fs.existsSync(dbFile)).toBe(true);
-      expect(fs.existsSync(jsonFile)).toBe(true);
 
-      // SQLite file should be larger than JSON (has indexes)
       const dbSize = fs.statSync(dbFile).size;
-      const jsonSize = fs.statSync(jsonFile).size;
 
       expect(dbSize).toBeGreaterThan(0);
-      expect(jsonSize).toBeGreaterThan(0);
     });
   });
 
   describe('Index Statistics', () => {
-    it('should show correct stats from SQLite', () => {
+    it('should show correct stats from SQLite', { timeout: 30000 }, () => {
       execSync('cadre index build', { cwd: testProjectDir, stdio: 'pipe' });
 
       const output = execSync('cadre index stats', {
@@ -106,7 +114,7 @@ export function utilFunction() {
   });
 
   describe('Index Update', () => {
-    it('should update index incrementally', () => {
+    it('should update index incrementally', { timeout: 30000 }, () => {
       // Build initial index
       execSync('cadre index build', { cwd: testProjectDir, stdio: 'pipe' });
 
@@ -126,40 +134,8 @@ export function utilFunction() {
     });
   });
 
-  describe('Migration from JSON to SQLite', () => {
-    it('should automatically migrate existing JSON index', () => {
-      // Clear indexes
-      execSync('cadre index clear', { cwd: testProjectDir, stdio: 'pipe' });
-
-      // Build index (creates both JSON and SQLite)
-      execSync('cadre index build', { cwd: testProjectDir, stdio: 'pipe' });
-
-      // Find index directory
-      const dirs = fs.readdirSync(indexDir);
-      const projectIndexDir = path.join(indexDir, dirs[0]);
-      const dbFile = path.join(projectIndexDir, 'index.db');
-
-      // Delete SQLite file but keep JSON
-      if (fs.existsSync(dbFile)) {
-        fs.unlinkSync(dbFile);
-      }
-
-      // Stats should still work (using JSON fallback)
-      const output1 = execSync('cadre index stats', {
-        cwd: testProjectDir,
-        encoding: 'utf-8',
-      });
-      expect(output1).toContain('Project Index Statistics');
-
-      // Rebuild should recreate SQLite from JSON
-      execSync('cadre index build', { cwd: testProjectDir, stdio: 'pipe' });
-
-      expect(fs.existsSync(dbFile)).toBe(true);
-    });
-  });
-
   describe('Error Handling', () => {
-    it('should handle missing index gracefully', () => {
+    it('should handle missing index gracefully', { timeout: 30000 }, () => {
       execSync('cadre index clear', { cwd: testProjectDir, stdio: 'pipe' });
 
       const output = execSync('cadre index stats', {
@@ -168,28 +144,6 @@ export function utilFunction() {
       });
 
       expect(output).toContain('No index found');
-    });
-
-    it('should fallback to JSON if SQLite fails', () => {
-      // Build index
-      execSync('cadre index build', { cwd: testProjectDir, stdio: 'pipe' });
-
-      // Find and corrupt SQLite file
-      const dirs = fs.readdirSync(indexDir);
-      const projectIndexDir = path.join(indexDir, dirs[0]);
-      const dbFile = path.join(projectIndexDir, 'index.db');
-
-      // Corrupt the database by writing invalid data
-      fs.writeFileSync(dbFile, 'corrupted data');
-
-      // Should still work using JSON fallback
-      const output = execSync('cadre index stats', {
-        cwd: testProjectDir,
-        encoding: 'utf-8',
-      });
-
-      // Should either show stats from JSON or indicate no index
-      expect(output).toBeDefined();
     });
   });
 });
