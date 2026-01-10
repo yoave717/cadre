@@ -7,12 +7,7 @@ import {
   getGitHubAuthInstructions,
   getGitLabAuthInstructions,
 } from './cli-utils.js';
-import {
-  detectRepoType,
-  findPrTemplate,
-  getDefaultPrTemplate,
-  generateCadreBranchName,
-} from './repo-utils.js';
+import { detectRepoType, findPrTemplate, generateCadreBranchName } from './repo-utils.js';
 
 export interface CreatePrOptions {
   title: string;
