@@ -224,10 +224,10 @@ export class TaskDecomposer {
     }
 
     // Check for comma-separated lists (strong indicator of multiple items)
-    const hasMultipleItems = (userRequest.match(/,/g) || []).length >= 3; // Increased threshold
+    const hasMultipleItems = (userRequest.match(/,/g) || []).length >= 2; // Increased threshold
 
     // Only decompose if we have strong evidence of parallel work
     // Require BOTH multiple indicators OR a clear list
-    return parallelIndicators >= 2 || hasMultipleItems;
+    return parallelIndicators >= 1 || hasMultipleItems;
   }
 }

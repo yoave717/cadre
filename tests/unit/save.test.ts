@@ -44,6 +44,9 @@ describe('SaveCommand', () => {
       saveDirectory: undefined,
       openaiApiKey: 'test-key',
       openaiBaseUrl: 'https://api.openai.com',
+      maxSessionTokens: 0,
+      tokenCostInput: 0,
+      tokenCostOutput: 0,
     });
   });
 
@@ -78,6 +81,9 @@ describe('SaveCommand', () => {
       saveDirectory: '/tmp/chats',
       openaiApiKey: 'test-key',
       openaiBaseUrl: 'https://api.openai.com',
+      maxSessionTokens: 0,
+      tokenCostInput: 0,
+      tokenCostOutput: 0,
     });
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
@@ -96,6 +102,9 @@ describe('SaveCommand', () => {
       saveDirectory: '~/my-chats',
       openaiApiKey: 'test-key',
       openaiBaseUrl: 'https://api.openai.com',
+      maxSessionTokens: 0,
+      tokenCostInput: 0,
+      tokenCostOutput: 0,
     });
 
     vi.mocked(fs.existsSync).mockReturnValue(true);

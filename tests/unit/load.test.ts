@@ -59,9 +59,17 @@ Found foo in bar.ts
     const assistant = history[0];
     expect(assistant.role).toBe('assistant');
 
+    if (assistant.role !== 'assistant') {
+      throw new Error('Expected assistant message');
+    }
+
     expect(assistant.tool_calls).toBeDefined();
-    expect(assistant.tool_calls![0].function.name).toBe('grep_search');
-    const args = JSON.parse(assistant.tool_calls![0].function.arguments);
+    const toolCall = assistant.tool_calls![0];
+    if (toolCall.type !== 'function') {
+      throw new Error('Expected function tool call');
+    }
+    expect(toolCall.function.name).toBe('grep_search');
+    const args = JSON.parse(toolCall.function.arguments);
     expect(args.query).toBe('foo');
 
     // Tool output
