@@ -23,6 +23,7 @@ export interface ConfigSchema {
   maxContextTokens?: number;
   maxOutputTokens?: number;
   systemPrompt?: string;
+  saveDirectory?: string;
 }
 
 const config = new Conf<ConfigSchema>({
@@ -48,6 +49,7 @@ export const getConfig = (): ConfigSchema => {
     maxContextTokens: parseInt(process.env.MAX_CONTEXT_TOKENS || '', 10) || 128000,
     maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS || '', 10) || 16000,
     systemPrompt: process.env.SYSTEM_PROMPT || config.get('systemPrompt'),
+    saveDirectory: process.env.SAVE_DIRECTORY || config.get('saveDirectory'),
   };
 };
 

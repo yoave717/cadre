@@ -129,8 +129,9 @@ program
 // Detect command
 program
   .command('detect')
-  .description('Detect project primary language')
-  .action(async () => {
+  .description('Detect project primary language and frameworks')
+  .option('--frameworks', 'Detect frameworks and libraries')
+  .action(async (options) => {
     try {
       const detector = new LanguageDetector();
       const result = await detector.detect();
@@ -150,6 +151,30 @@ program
       }
 
       console.log(chalk.dim(`\n  Scanned ${result.totalFiles} files.`));
+
+      if (options.frameworks) {
+        const { FrameworkDetector } = await import('./tools/framework-detector.js');
+        const frameworkDetector = new FrameworkDetector();
+        const frameworkResult = await frameworkDetector.detect();
+
+        console.log(chalk.bold('\nDetected Frameworks:'));
+
+        if (frameworkResult.frameworks.length === 0) {
+          console.log(chalk.dim('  No common frameworks detected.'));
+        } else {
+          for (const fw of frameworkResult.frameworks) {
+            let output = `  ${fw.name}`;
+            if (fw.version) output += ` v${fw.version}`;
+            output += ` (${fw.ecosystem})`;
+
+            if (fw.confidence === 'high') {
+              console.log(chalk.green(output));
+            } else {
+              console.log(chalk.yellow(output));
+            }
+          }
+        }
+      }
     } catch (error) {
       const err = error as Error;
       console.error(chalk.red(`Error detecting language: ${err.message}`));

@@ -4,6 +4,8 @@ import ora from 'ora';
 import { marked } from 'marked';
 import TerminalRenderer from 'marked-terminal';
 import { Agent, HistoryItem } from '../agent/index.js';
+import { saveConversation } from '../commands/save.js';
+import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
 import { getConfig } from '../config.js';
 
 // Configure marked for terminal rendering
@@ -145,14 +147,34 @@ export const startInteractiveSession = async (
 
   // Interactive loop
 
+  const multiLineHandler = new MultiLineHandler();
+
   while (true) {
     try {
-      const answer = await input({ message: chalk.green('❯') });
-      const trimmed = answer.trim();
+      const mode = multiLineHandler.getMode();
+      const promptStr = getModePrompt(mode);
 
-      // Handle slash commands
-      if (trimmed.startsWith('/')) {
-        const handled = await handleSlashCommand(trimmed, agent);
+      const answer = await input({
+        message: mode === 'normal' ? chalk.green(promptStr) : chalk.yellow(promptStr),
+      });
+
+      // Pass to multi-line handler
+      const result = multiLineHandler.processLine(answer);
+
+      // If in explicit mode (multi-line), we don't process commands unless it's /cancel handled inside handler (or we trap it here)
+      // Actually we need to handle /multi separately if we are in normal mode.
+
+      if (!result.complete) {
+        // If we just entered a mode or are continuing in a mode, we loop back
+        // Check if we need to print anything? Inquirer handles echo.
+        continue;
+      }
+
+      const trimmed = result.content.trim();
+
+      // Handle slash commands (only in normal mode, effectively, since processLine returns complete=true for /end)
+      if (trimmed.startsWith('/') && multiLineHandler.getMode() === 'normal') {
+        const handled = await handleSlashCommand(trimmed, agent, multiLineHandler);
         if (handled === 'exit') break;
         if (handled) continue;
       }
@@ -160,7 +182,7 @@ export const startInteractiveSession = async (
       // Skip empty input
       if (!trimmed) continue;
 
-      await processPrompt(agent, answer);
+      await processPrompt(agent, result.content);
       console.log(''); // Extra line for readability
     } catch (error) {
       if (error instanceof Error && error.message.includes('User force closed')) {
@@ -171,7 +193,11 @@ export const startInteractiveSession = async (
   }
 };
 
-async function handleSlashCommand(command: string, agent: Agent): Promise<boolean | 'exit'> {
+async function handleSlashCommand(
+  command: string,
+  agent: Agent,
+  multiLineHandler: MultiLineHandler,
+): Promise<boolean | 'exit'> {
   const parts = command.slice(1).split(' ');
   const cmd = parts[0].toLowerCase();
   const args = parts.slice(1);
@@ -230,7 +256,31 @@ async function handleSlashCommand(command: string, agent: Agent): Promise<boolea
       console.log(chalk.dim('  /stats       - Show context/token statistics'));
       console.log(chalk.dim('  /exit        - Exit the session'));
       console.log(chalk.dim('  /system [prompt] - View or update system prompt'));
+      console.log(chalk.dim('  /save [name] - Save conversation to file'));
+      console.log(chalk.dim('  /multi       - Enter multi-line input mode (end with /end)'));
       console.log(chalk.dim('  /help        - Show this help\n'));
+      return true;
+
+    case 'save':
+      try {
+        const socketPath = await saveConversation(agent, args[0]);
+        console.log(chalk.green(`Conversation saved to: ${socketPath}`));
+      } catch (error) {
+        const err = error as Error;
+        console.log(chalk.red(`Error saving conversation: ${err.message}`));
+      }
+      return true;
+
+    case 'multi':
+      multiLineHandler.setMode('explicit');
+      console.log(
+        chalk.yellow('Entering multi-line mode. Type /end to submit, /cancel to discard.'),
+      );
+      return true;
+
+    case 'cancel':
+      multiLineHandler.cancel();
+      console.log(chalk.yellow('Input cancelled.'));
       return true;
 
     case 'system':

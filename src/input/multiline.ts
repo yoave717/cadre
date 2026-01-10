@@ -7,7 +7,7 @@
  * - Bracketed paste mode
  */
 
-export type InputMode = 'normal' | 'backtick' | 'heredoc' | 'continuation';
+export type InputMode = 'normal' | 'backtick' | 'heredoc' | 'continuation' | 'explicit';
 
 export interface MultiLineResult {
   complete: boolean;
@@ -59,7 +59,45 @@ export class MultiLineHandler {
       return { complete: true, content: line, mode: 'normal' };
     }
 
-    // Accumulate in multi-line mode
+    // Handle Explicit Mode
+    if (this.mode === 'explicit') {
+      // Check for cancellation
+      if (line.trim() === '/cancel') {
+        this.cancel();
+        return { complete: false, content: '', mode: 'normal' };
+      }
+
+      // Check for explicit end
+      if (line.trim() === '/end') {
+        const content = this.buffer.join('\n');
+        this.reset();
+        return { complete: true, content, mode: 'normal' };
+      }
+
+      // Check for Ctrl+D equivalent (empty line is preserved, but maybe we want a specific signal?
+      // For now, relying on /end or just accumulating blank lines.
+      // The requirement says "Ctrl+D on empty line".
+      // In a raw TTY, Ctrl+D usually sends EOT. interactive.ts might handle it or inquirer.
+      // If we just get an empty string here from inquirer on "Enter", we preserve it.
+
+      // Accumulate
+      this.buffer.push(line);
+
+      // Check limits
+      const currentLength = this.buffer.reduce((acc, l) => acc + l.length + 1, 0); // +1 for newline
+
+      if (currentLength > 50000) {
+        throw new Error('Input exceeds maximum length of 50,000 characters');
+      }
+
+      if (currentLength > 45000) {
+        console.warn('Warning: Input approaching maximum length (45,000 / 50,000)');
+      }
+
+      return { complete: false, content: '', mode: this.mode };
+    }
+
+    // Accumulate in other multi-line modes
     this.buffer.push(line);
 
     // Check for mode exit conditions
@@ -138,6 +176,20 @@ export class MultiLineHandler {
   }
 
   /**
+   * Set the input mode explicitly.
+   */
+  setMode(mode: InputMode): void {
+    this.mode = mode;
+    if (mode === 'explicit') {
+      this.buffer = [];
+    }
+  }
+
+  /**
+   * Cancel current multi-line input and reset.
+   */
+
+  /**
    * Get current mode.
    */
   getMode(): InputMode {
@@ -156,6 +208,13 @@ export class MultiLineHandler {
    */
   isMultiLine(): boolean {
     return this.mode !== 'normal';
+  }
+
+  /**
+   * Cancel current input explicitly.
+   */
+  cancel(): void {
+    this.reset();
   }
 
   /**
@@ -257,6 +316,8 @@ export function getModePrompt(mode: InputMode): string {
     case 'heredoc':
       return '> ';
     case 'continuation':
+      return '... ';
+    case 'explicit':
       return '... ';
     default:
       return '❯ ';
