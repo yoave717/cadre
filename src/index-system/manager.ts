@@ -91,6 +91,28 @@ export class IndexManager {
 
     // Index all files with progress tracking
     const progressState = { current: 0, total: totalFiles };
+
+    // Batch for SQLite insertions
+    const batch: Record<string, FileIndex> = {};
+    const BATCH_SIZE = 50;
+
+    const onFileIndexed = async (fileIndex: FileIndex) => {
+      if (this.useSqlite && this.sqlite) {
+        batch[fileIndex.metadata.path] = fileIndex;
+
+        if (Object.keys(batch).length >= BATCH_SIZE) {
+          try {
+            this.sqlite.insertBatch(batch);
+          } catch (error) {
+            console.error('Failed to insert batch into SQLite:', error);
+          }
+
+          // Clear batch
+          for (const key in batch) delete batch[key];
+        }
+      }
+    };
+
     const files = await indexDirectory(
       this.projectRoot,
       this.projectRoot,
@@ -98,7 +120,18 @@ export class IndexManager {
       0,
       progressCallback,
       progressState,
+      undefined, // Default concurrency
+      onFileIndexed,
     );
+
+    // Flush remaining items in batch
+    if (this.useSqlite && this.sqlite && Object.keys(batch).length > 0) {
+      try {
+        this.sqlite.insertBatch(batch);
+      } catch (error) {
+        console.error('Failed to insert remaining batch into SQLite:', error);
+      }
+    }
 
     // Calculate statistics
     if (progressCallback) {

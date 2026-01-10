@@ -3,8 +3,8 @@
  * Provides fast file and symbol search for improved performance
  */
 
-export { IndexManager } from './manager.js';
-export { SqliteIndexManager } from './sqlite-manager.js';
+export { IndexManager } from './manager';
+export { SqliteIndexManager } from './sqlite-manager';
 export {
   loadIndex,
   saveIndex,
@@ -13,7 +13,7 @@ export {
   getIndexStats,
   clearAllIndexes,
   hashProjectPath,
-} from './storage.js';
+} from './storage';
 export type {
   FileMetadata,
   Symbol,
@@ -21,4 +21,4 @@ export type {
   ProjectIndex,
   IndexStats,
   SearchResult,
-} from './types.js';
+} from './types';

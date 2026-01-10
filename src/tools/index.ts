@@ -4,7 +4,8 @@
 
 import path from 'path';
 import chalk from 'chalk';
-import { IndexManager } from '../index-system/index.js';
+import { IndexManager } from '../index-system/index';
+import { IndexProgress } from '../index-system/types';
 
 let indexManager: IndexManager | null = null;
 
@@ -110,7 +111,7 @@ export async function buildIndex(): Promise<string> {
   const output: string[] = [];
   const progressLines: string[] = [];
 
-  const stats = await manager.buildIndex((progress) => {
+  const stats = await manager.buildIndex((progress: IndexProgress) => {
     let message = '';
     if (progress.phase === 'scanning') {
       message = 'Scanning project files...';
