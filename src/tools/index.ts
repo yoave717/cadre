@@ -70,7 +70,10 @@ export async function searchSymbols(
 /**
  * Find files by path or name pattern
  */
-export async function findFiles(pattern: string, options: { limit?: number } = {}): Promise<string> {
+export async function findFiles(
+  pattern: string,
+  options: { limit?: number } = {},
+): Promise<string> {
   const manager = getIndexManager();
 
   // Try to load existing index
@@ -112,9 +115,8 @@ export async function buildIndex(): Promise<string> {
     if (progress.phase === 'scanning') {
       message = 'Scanning project files...';
     } else if (progress.phase === 'indexing') {
-      const percent = progress.total > 0
-        ? Math.round((progress.current / progress.total) * 100)
-        : 0;
+      const percent =
+        progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
       message = `Indexing files: ${progress.current}/${progress.total} (${percent}%)`;
       if (progress.currentFile) {
         message += ` - ${progress.currentFile}`;
@@ -202,9 +204,7 @@ export async function indexStats(): Promise<string> {
   output.push(`Total files: ${chalk.blue(stats.totalFiles.toString())}`);
   output.push(`Total symbols: ${chalk.blue(stats.totalSymbols.toString())}`);
   output.push(`Total size: ${chalk.blue((stats.totalSize / 1024).toFixed(2))} KB`);
-  output.push(
-    `Last indexed: ${chalk.blue(new Date(stats.indexed_at).toLocaleString())}\n`,
-  );
+  output.push(`Last indexed: ${chalk.blue(new Date(stats.indexed_at).toLocaleString())}\n`);
 
   if (Object.keys(stats.languages).length > 0) {
     output.push(chalk.bold('Languages:'));

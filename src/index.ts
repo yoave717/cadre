@@ -5,7 +5,12 @@ import { startInteractiveSession, runSinglePrompt } from './ui/interactive.js';
 import { clearConfig, setConfig, getConfig, isConfigValid } from './config.js';
 import { getPermissionManager, listPermissions, clearAllPermissions } from './permissions/index.js';
 import { LanguageDetector } from './tools/language-detector.js';
-import { IndexManager, listIndexedProjects, clearAllIndexes, getIndexStats } from './index-system/index.js';
+import {
+  IndexManager,
+  listIndexedProjects,
+  clearAllIndexes,
+  getIndexStats,
+} from './index-system/index.js';
 
 const program = new Command();
 
@@ -201,9 +206,8 @@ program
           if (progress.phase === 'scanning') {
             message = chalk.blue('🔍 Scanning project files...');
           } else if (progress.phase === 'indexing') {
-            const percent = progress.total > 0
-              ? Math.round((progress.current / progress.total) * 100)
-              : 0;
+            const percent =
+              progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
             message = chalk.blue(
               `📝 Indexing files... ${progress.current}/${progress.total} (${percent}%)`,
             );

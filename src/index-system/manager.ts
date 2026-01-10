@@ -1,5 +1,12 @@
 import path from 'path';
-import type { ProjectIndex, FileIndex, IndexStats, SearchResult, Symbol, ProgressCallback } from './types.js';
+import type {
+  ProjectIndex,
+  FileIndex,
+  IndexStats,
+  SearchResult,
+  Symbol,
+  ProgressCallback,
+} from './types.js';
 import { loadIndex, saveIndex, hashProjectPath } from './storage.js';
 import { indexDirectory, indexFile, hasFileChanged, countFiles } from './file-indexer.js';
 
@@ -76,8 +83,7 @@ export class IndexManager {
       totalSize += fileIndex.metadata.size;
 
       if (fileIndex.metadata.language) {
-        languages[fileIndex.metadata.language] =
-          (languages[fileIndex.metadata.language] || 0) + 1;
+        languages[fileIndex.metadata.language] = (languages[fileIndex.metadata.language] || 0) + 1;
       }
     }
 
@@ -159,8 +165,7 @@ export class IndexManager {
       totalSize += fileIndex.metadata.size;
 
       if (fileIndex.metadata.language) {
-        languages[fileIndex.metadata.language] =
-          (languages[fileIndex.metadata.language] || 0) + 1;
+        languages[fileIndex.metadata.language] = (languages[fileIndex.metadata.language] || 0) + 1;
       }
     }
 

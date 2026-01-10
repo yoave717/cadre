@@ -44,8 +44,14 @@ const JAVASCRIPT_PATTERNS: LanguagePatterns = {
   variables: [/^(?:export\s+)?(?:let|var)\s+(\w+)/gm],
   constants: [/^(?:export\s+)?const\s+([A-Z_][A-Z0-9_]*)\s*=/gm],
   methods: [/^\s+(?:async\s+)?(\w+)\s*\([^)]*\)\s*{/gm],
-  imports: [/^(?:import|require)\s+.*from\s+['"]([^'"]+)['"]/gm, /^const\s+.*=\s*require\(['"]([^'"]+)['"]\)/gm],
-  exports: [/^(?:module\.)?exports?\s*=/, /^export\s+(?:default\s+)?(?:class|function|const|let|var)\s+(\w+)/gm],
+  imports: [
+    /^(?:import|require)\s+.*from\s+['"]([^'"]+)['"]/gm,
+    /^const\s+.*=\s*require\(['"]([^'"]+)['"]\)/gm,
+  ],
+  exports: [
+    /^(?:module\.)?exports?\s*=/,
+    /^export\s+(?:default\s+)?(?:class|function|const|let|var)\s+(\w+)/gm,
+  ],
 };
 
 const PYTHON_PATTERNS: LanguagePatterns = {
@@ -76,7 +82,11 @@ const RUST_PATTERNS: LanguagePatterns = {
   functions: [/^(?:pub\s+)?(?:async\s+)?fn\s+(\w+)/gm],
   classes: [],
   interfaces: [/^(?:pub\s+)?trait\s+(\w+)/gm],
-  types: [/^(?:pub\s+)?struct\s+(\w+)/gm, /^(?:pub\s+)?enum\s+(\w+)/gm, /^(?:pub\s+)?type\s+(\w+)\s*=/gm],
+  types: [
+    /^(?:pub\s+)?struct\s+(\w+)/gm,
+    /^(?:pub\s+)?enum\s+(\w+)/gm,
+    /^(?:pub\s+)?type\s+(\w+)\s*=/gm,
+  ],
   variables: [/^(?:pub\s+)?(?:static\s+)?let\s+(?:mut\s+)?(\w+)/gm],
   constants: [/^(?:pub\s+)?const\s+(\w+)/gm],
   methods: [/^\s+(?:pub\s+)?(?:async\s+)?fn\s+(\w+)/gm],

@@ -213,7 +213,10 @@ from typing import List, Dict`;
 
       expect(imports.length).toBeGreaterThan(0);
       // Check that common imports are captured
-      const hasBasicImports = imports.some((imp) => imp === 'os' || imp === 'sys' || imp === 'Path' || imp === 'List' || imp === 'Dict');
+      const hasBasicImports = imports.some(
+        (imp) =>
+          imp === 'os' || imp === 'sys' || imp === 'Path' || imp === 'List' || imp === 'Dict',
+      );
       expect(hasBasicImports).toBe(true);
     });
   });
