@@ -7,6 +7,7 @@ import { TaskDecomposer } from './task-decomposer.js';
 import { WorkerPool } from './worker-pool.js';
 import type { TaskPlan, SubTask, TaskResult, WorkerPoolConfig, WorkerMessage } from './types.js';
 import chalk from 'chalk';
+import { theme } from '../ui/colors.js';
 
 export interface CoordinatorConfig extends WorkerPoolConfig {
   verbose?: boolean;
@@ -44,13 +45,13 @@ export class TaskCoordinator {
   async execute(userRequest: string): Promise<ExecutionSummary> {
     const startTime = Date.now();
 
-    this.log(chalk.cyan('🧠 Analyzing request and planning tasks...'));
+    this.log(theme.info('🧠 Analyzing request and planning tasks...'));
 
     // Decompose the request into a task plan
     const plan = await this.decomposer.decompose(userRequest);
 
-    this.log(chalk.green(`✓ Created plan with ${plan.subtasks.length} subtasks`));
-    this.log(chalk.gray(`  Main goal: ${plan.mainGoal}`));
+    this.log(theme.success(`✓ Created plan with ${plan.subtasks.length} subtasks`));
+    this.log(theme.dim(`  Main goal: ${plan.mainGoal}`));
 
     if (this.config.verbose) {
       this.logPlan(plan);
@@ -64,7 +65,7 @@ export class TaskCoordinator {
     const failureCount = results.filter((r) => !r.success).length;
 
     this.log(
-      chalk.green(
+      theme.success(
         `\n✓ Completed in ${(totalDuration / 1000).toFixed(2)}s: ${successCount} succeeded, ${failureCount} failed`,
       ),
     );
@@ -90,8 +91,8 @@ export class TaskCoordinator {
     // Execute each parallel group sequentially
     for (let i = 0; i < plan.parallelGroups.length; i++) {
       const group = plan.parallelGroups[i];
-      this.log(chalk.cyan(`\n⚡ Executing parallel group ${i + 1}/${plan.parallelGroups.length}`));
-      this.log(chalk.gray(`  Tasks: ${group.length}`));
+      this.log(theme.info(`\n⚡ Executing parallel group ${i + 1}/${plan.parallelGroups.length}`));
+      this.log(theme.dim(`  Tasks: ${group.length}`));
 
       // Get tasks for this group
       const tasksToExecute = group
@@ -104,7 +105,7 @@ export class TaskCoordinator {
           const unsatisfied = task.dependencies.filter((depId) => !completedTaskIds.has(depId));
           if (unsatisfied.length > 0) {
             this.log(
-              chalk.yellow(
+              theme.warning(
                 `  ⚠️  Warning: Task ${task.id} has unsatisfied dependencies: ${unsatisfied.join(', ')}`,
               ),
             );
@@ -127,7 +128,7 @@ export class TaskCoordinator {
       // Show group summary
       const groupSuccess = groupResults.filter((r) => r.success).length;
       const groupFailed = groupResults.filter((r) => !r.success).length;
-      this.log(chalk.gray(`  ✓ Group complete: ${groupSuccess} succeeded, ${groupFailed} failed`));
+      this.log(theme.dim(`  ✓ Group complete: ${groupSuccess} succeeded, ${groupFailed} failed`));
     }
 
     return allResults;
@@ -162,15 +163,15 @@ export class TaskCoordinator {
 
     switch (message.type) {
       case 'task-start':
-        this.log(chalk.blue(`  → ${message.workerId}: Starting ${message.taskId}`));
+        this.log(theme.info(`  → ${message.workerId}: Starting ${message.taskId}`));
         if (message.data?.description) {
-          this.log(chalk.gray(`    "${message.data.description}"`));
+          this.log(theme.dim(`    "${message.data.description}"`));
         }
         break;
 
       case 'task-progress':
         if (message.data?.tool) {
-          this.log(chalk.gray(`    ${message.workerId}: Using tool ${message.data.tool}`));
+          this.log(theme.dim(`    ${message.workerId}: Using tool ${message.data.tool}`));
         }
         break;
 
@@ -184,7 +185,7 @@ export class TaskCoordinator {
             ? `, ${message.data.toolCalls} tool calls`
             : '';
         this.log(
-          chalk.green(
+          theme.success(
             `  ✓ ${message.workerId}: Completed ${message.taskId}${duration}${toolCalls}`,
           ),
         );
@@ -192,9 +193,9 @@ export class TaskCoordinator {
       }
 
       case 'task-error':
-        this.log(chalk.red(`  ✗ ${message.workerId}: Failed ${message.taskId}`));
+        this.log(theme.error(`  ✗ ${message.workerId}: Failed ${message.taskId}`));
         if (message.data?.error) {
-          this.log(chalk.red(`    Error: ${message.data.error}`));
+          this.log(theme.error(`    Error: ${message.data.error}`));
         }
         break;
     }
@@ -213,10 +214,10 @@ export class TaskCoordinator {
    * Log the task plan details
    */
   private logPlan(plan: TaskPlan): void {
-    this.log(chalk.cyan('\n📋 Task Plan:'));
+    this.log(theme.info('\n📋 Task Plan:'));
     for (let i = 0; i < plan.parallelGroups.length; i++) {
       const group = plan.parallelGroups[i];
-      this.log(chalk.gray(`  Group ${i + 1} (${group.length} tasks in parallel):`));
+      this.log(theme.dim(`  Group ${i + 1} (${group.length} tasks in parallel):`));
       for (const taskId of group) {
         const task = plan.subtasks.find((t) => t.id === taskId);
         if (task) {
@@ -224,7 +225,7 @@ export class TaskCoordinator {
             ? ` [depends on: ${task.dependencies.join(', ')}]`
             : '';
           const complexity = task.estimatedComplexity ? ` [${task.estimatedComplexity}]` : '';
-          this.log(chalk.gray(`    • ${task.id}: ${task.description}${deps}${complexity}`));
+          this.log(theme.dim(`    • ${task.id}: ${task.description}${deps}${complexity}`));
         }
       }
     }
@@ -235,28 +236,28 @@ export class TaskCoordinator {
    */
   formatSummary(summary: ExecutionSummary): string {
     const lines = [
-      chalk.bold('\n📊 Execution Summary'),
-      chalk.gray('─'.repeat(50)),
+      theme.emphasis('\n📊 Execution Summary'),
+      theme.separator(50),
       `Main Goal: ${summary.plan.mainGoal}`,
       `Total Tasks: ${summary.plan.subtasks.length}`,
       `Workers Used: ${summary.workersUsed}`,
       `Duration: ${(summary.totalDuration / 1000).toFixed(2)}s`,
-      `Success: ${chalk.green(summary.successCount.toString())}`,
-      `Failed: ${summary.failureCount > 0 ? chalk.red(summary.failureCount.toString()) : '0'}`,
-      chalk.gray('─'.repeat(50)),
+      `Success: ${theme.success(summary.successCount.toString())}`,
+      `Failed: ${summary.failureCount > 0 ? theme.error(summary.failureCount.toString()) : '0'}`,
+      theme.separator(50),
     ];
 
     // Add individual task results
     if (this.config.verbose) {
-      lines.push(chalk.bold('\nTask Results:'));
+      lines.push(theme.emphasis('\nTask Results:'));
       for (const result of summary.results) {
-        const status = result.success ? chalk.green('✓') : chalk.red('✗');
+        const status = result.success ? theme.success('✓') : theme.error('✗');
         const duration = `${(result.duration / 1000).toFixed(2)}s`;
         const task = summary.plan.subtasks.find((t) => t.id === result.taskId);
         const description = task?.description || result.taskId;
         lines.push(`${status} ${description} (${duration}, ${result.workerId})`);
         if (!result.success && result.error) {
-          lines.push(chalk.red(`  Error: ${result.error}`));
+          lines.push(theme.error(`  Error: ${result.error}`));
         }
       }
     }

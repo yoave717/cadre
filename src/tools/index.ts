@@ -6,6 +6,7 @@ import path from 'path';
 import chalk from 'chalk';
 import { IndexManager } from '../index-system/index';
 import { IndexProgress } from '../index-system/types';
+import { theme, formatSymbolType } from '../ui/colors.js';
 
 let indexManager: IndexManager | null = null;
 
@@ -32,7 +33,7 @@ export async function searchSymbols(
   const loaded = await manager.load();
 
   if (!loaded) {
-    return chalk.yellow(
+    return theme.warning(
       'No index found. Run the build_index tool first to create an index of your project.',
     );
   }
@@ -48,20 +49,13 @@ export async function searchSymbols(
 
   for (const result of results) {
     const { path: filePath, line, symbol } = result;
-    const typeColor =
-      symbol!.type === 'function'
-        ? chalk.blue
-        : symbol!.type === 'class'
-          ? chalk.green
-          : symbol!.type === 'interface'
-            ? chalk.cyan
-            : chalk.gray;
+    const { color: typeColor, exportedColor } = formatSymbolType(symbol!.type, symbol!.exported);
 
     output.push(
-      `${chalk.gray(filePath)}:${chalk.yellow(line)} - ${typeColor(symbol!.type)} ${chalk.bold(symbol!.name)}${symbol!.exported ? chalk.magenta(' (exported)') : ''}`,
+      `${theme.path(filePath)}:${theme.lineNumber(line.toString())} - ${typeColor(symbol!.type)} ${theme.emphasis(symbol!.name)}${symbol!.exported ? exportedColor(' (exported)') : ''}`,
     );
     if (symbol!.signature) {
-      output.push(`  ${chalk.dim(symbol!.signature)}`);
+      output.push(`  ${theme.dim(symbol!.signature)}`);
     }
   }
 
@@ -81,7 +75,7 @@ export async function findFiles(
   const loaded = await manager.load();
 
   if (!loaded) {
-    return chalk.yellow(
+    return theme.warning(
       'No index found. Run the build_index tool first to create an index of your project.',
     );
   }
@@ -96,7 +90,7 @@ export async function findFiles(
   output.push(`Found ${results.length} file${results.length === 1 ? '' : 's'}:\n`);
 
   for (const filePath of results) {
-    output.push(chalk.gray(filePath));
+    output.push(theme.path(filePath));
   }
 
   return output.join('\n');
@@ -132,18 +126,18 @@ export async function buildIndex(): Promise<string> {
 
   // Include progress in output for transparency
   if (progressLines.length > 0) {
-    output.push(chalk.dim('Progress:'));
-    output.push(chalk.dim(`  ${progressLines[0]}`)); // First (scanning)
-    output.push(chalk.dim(`  ${progressLines[Math.floor(progressLines.length / 2)]}`)); // Middle
-    output.push(chalk.dim(`  ${progressLines[progressLines.length - 1]}`)); // Last
+    output.push(theme.dim('Progress:'));
+    output.push(theme.dim(`  ${progressLines[0]}`)); // First (scanning)
+    output.push(theme.dim(`  ${progressLines[Math.floor(progressLines.length / 2)]}`)); // Middle
+    output.push(theme.dim(`  ${progressLines[progressLines.length - 1]}`)); // Last
     output.push('');
   }
 
-  output.push(chalk.green('✓ Index built successfully!\n'));
-  output.push(`Files indexed: ${chalk.bold(stats.totalFiles.toString())}`);
-  output.push(`Symbols found: ${chalk.bold(stats.totalSymbols.toString())}`);
-  output.push(`Total size: ${chalk.bold((stats.totalSize / 1024).toFixed(2))} KB`);
-  output.push(`Duration: ${chalk.bold(stats.duration.toString())} ms\n`);
+  output.push(theme.success('✓ Index built successfully!\n'));
+  output.push(`Files indexed: ${theme.emphasis(stats.totalFiles.toString())}`);
+  output.push(`Symbols found: ${theme.emphasis(stats.totalSymbols.toString())}`);
+  output.push(`Total size: ${theme.emphasis((stats.totalSize / 1024).toFixed(2))} KB`);
+  output.push(`Duration: ${theme.emphasis(stats.duration.toString())} ms\n`);
 
   if (Object.keys(stats.languages).length > 0) {
     output.push('Languages:');
@@ -165,18 +159,18 @@ export async function updateIndex(): Promise<string> {
   const loaded = await manager.load();
 
   if (!loaded) {
-    return chalk.yellow('No existing index found. Use build_index to create a new index.');
+    return theme.warning('No existing index found. Use build_index to create a new index.');
   }
 
   const output: string[] = [];
-  output.push(chalk.blue('Updating project index...\n'));
+  output.push(theme.info('Updating project index...\n'));
 
   const stats = await manager.updateIndex();
 
-  output.push(chalk.green('✓ Index updated successfully!\n'));
-  output.push(`Files indexed: ${chalk.bold(stats.totalFiles.toString())}`);
-  output.push(`Symbols found: ${chalk.bold(stats.totalSymbols.toString())}`);
-  output.push(`Duration: ${chalk.bold(stats.duration.toString())} ms`);
+  output.push(theme.success('✓ Index updated successfully!\n'));
+  output.push(`Files indexed: ${theme.emphasis(stats.totalFiles.toString())}`);
+  output.push(`Symbols found: ${theme.emphasis(stats.totalSymbols.toString())}`);
+  output.push(`Duration: ${theme.emphasis(stats.duration.toString())} ms`);
 
   return output.join('\n');
 }
@@ -191,7 +185,7 @@ export async function indexStats(): Promise<string> {
   const loaded = await manager.load();
 
   if (!loaded) {
-    return chalk.yellow('No index found for this project.');
+    return theme.warning('No index found for this project.');
   }
 
   const stats = manager.getStats();
@@ -201,14 +195,14 @@ export async function indexStats(): Promise<string> {
   }
 
   const output: string[] = [];
-  output.push(chalk.bold('Project Index Statistics\n'));
-  output.push(`Total files: ${chalk.blue(stats.totalFiles.toString())}`);
-  output.push(`Total symbols: ${chalk.blue(stats.totalSymbols.toString())}`);
-  output.push(`Total size: ${chalk.blue((stats.totalSize / 1024).toFixed(2))} KB`);
-  output.push(`Last indexed: ${chalk.blue(new Date(stats.indexed_at).toLocaleString())}\n`);
+  output.push(theme.emphasis('Project Index Statistics\n'));
+  output.push(`Total files: ${theme.info(stats.totalFiles.toString())}`);
+  output.push(`Total symbols: ${theme.info(stats.totalSymbols.toString())}`);
+  output.push(`Total size: ${theme.info((stats.totalSize / 1024).toFixed(2))} KB`);
+  output.push(`Last indexed: ${theme.info(new Date(stats.indexed_at).toLocaleString())}\n`);
 
   if (Object.keys(stats.languages).length > 0) {
-    output.push(chalk.bold('Languages:'));
+    output.push(theme.emphasis('Languages:'));
     for (const [lang, count] of Object.entries(stats.languages)) {
       output.push(`  ${lang}: ${count} files`);
     }
@@ -227,7 +221,7 @@ export async function getFileSymbols(filePath: string): Promise<string> {
   const loaded = await manager.load();
 
   if (!loaded) {
-    return chalk.yellow('No index found. Run the build_index tool first.');
+    return theme.warning('No index found. Run the build_index tool first.');
   }
 
   // Convert to relative path if absolute
@@ -242,7 +236,7 @@ export async function getFileSymbols(filePath: string): Promise<string> {
   }
 
   const output: string[] = [];
-  output.push(`Symbols in ${chalk.bold(filePath)}:\n`);
+  output.push(`Symbols in ${theme.emphasis(filePath)}:\n`);
 
   // Group symbols by type
   const byType: Record<string, typeof symbols> = {};
@@ -254,10 +248,11 @@ export async function getFileSymbols(filePath: string): Promise<string> {
   }
 
   for (const [type, syms] of Object.entries(byType)) {
-    output.push(chalk.bold(`${type}s:`));
+    output.push(theme.emphasis(`${type}s:`));
     for (const symbol of syms) {
+      const { exportedColor } = formatSymbolType(symbol.type, symbol.exported);
       output.push(
-        `  ${chalk.gray(symbol.line.toString())} ${symbol.name}${symbol.exported ? chalk.magenta(' (exported)') : ''}`,
+        `  ${theme.dim(symbol.line.toString())} ${symbol.name}${symbol.exported ? exportedColor(' (exported)') : ''}`,
       );
     }
   }
@@ -275,7 +270,7 @@ export async function findImporters(moduleName: string): Promise<string> {
   const loaded = await manager.load();
 
   if (!loaded) {
-    return chalk.yellow('No index found. Run the build_index tool first.');
+    return theme.warning('No index found. Run the build_index tool first.');
   }
 
   const importers = manager.findImporters(moduleName);
@@ -285,10 +280,10 @@ export async function findImporters(moduleName: string): Promise<string> {
   }
 
   const output: string[] = [];
-  output.push(`Files importing ${chalk.bold(moduleName)}:\n`);
+  output.push(`Files importing ${theme.emphasis(moduleName)}:\n`);
 
   for (const filePath of importers) {
-    output.push(chalk.gray(filePath));
+    output.push(theme.path(filePath));
   }
 
   return output.join('\n');

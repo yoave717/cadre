@@ -280,11 +280,15 @@ export class LineEditor {
   private render() {
     if (!this.active) return;
 
-    // Clear current line
-    readline.clearLine(process.stdout, 0);
-    readline.cursorTo(process.stdout, 0);
-
+    // Save cursor position, clear from cursor to end of line, restore cursor
+    // This is more efficient than clearing the entire line
+    const promptLength = this.getPromptLength();
+    
     if (this.searchMode) {
+      // For search mode, we need to redraw everything
+      readline.clearLine(process.stdout, 0);
+      readline.cursorTo(process.stdout, 0);
+      
       // Display search mode UI
       const currentMatch =
         this.searchMatches.length > 0 ? this.searchMatches[this.searchIndex] : '';
@@ -295,7 +299,10 @@ export class LineEditor {
       const searchPrompt = `(reverse-i-search)\`${this.searchQuery}': ${currentMatch}${matchInfo}`;
       process.stdout.write(searchPrompt);
     } else {
-      // Print prompt and buffer
+      // Move cursor to start of line
+      readline.cursorTo(process.stdout, 0);
+      
+      // Write prompt and buffer
       process.stdout.write(this.prompt + this.buffer);
 
       // Show inline suggestion if cursor is at end and we have a suggestion callback
@@ -307,15 +314,24 @@ export class LineEditor {
         }
       }
 
+      // Clear from cursor to end of line (removes any leftover characters)
+      process.stdout.write('\u001b[K');
+
       // Move cursor to correct position
-      readline.cursorTo(process.stdout, this.getPromptLength() + this.cursor);
+      readline.cursorTo(process.stdout, promptLength + this.cursor);
     }
   }
 
   private getPromptLength(): number {
-    // Strip ANSI codes from prompt to get real length
+    // Strip ALL ANSI escape sequences from prompt to get real visible length
+    // This regex matches all ANSI escape sequences including:
+    // - Simple color codes: \u001b[31m
+    // - 256-color codes: \u001b[38;5;217m
+    // - RGB color codes: \u001b[38;2;255;181;167m
+    // - Reset codes: \u001b[0m
+    // - Bold, dim, etc: \u001b[1m, \u001b[2m
     // eslint-disable-next-line no-control-regex
-    const stripped = this.prompt.replace(/\u001b\[\d+m/g, '');
+    const stripped = this.prompt.replace(/\u001b\[[0-9;]*m/g, '');
     return stripped.length;
   }
 
