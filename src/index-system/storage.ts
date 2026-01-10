@@ -78,7 +78,9 @@ export async function deleteIndex(projectPath: string): Promise<void> {
 /**
  * List all indexed projects
  */
-export async function listIndexedProjects(): Promise<Array<{ path: string; hash: string; indexed_at: number }>> {
+export async function listIndexedProjects(): Promise<
+  Array<{ path: string; hash: string; indexed_at: number }>
+> {
   try {
     await fs.mkdir(INDEX_DIR, { recursive: true });
     const entries = await fs.readdir(INDEX_DIR, { withFileTypes: true });

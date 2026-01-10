@@ -152,7 +152,9 @@ describe('Index Storage', () => {
     });
 
     it('should handle deletion errors gracefully', async () => {
-      (fs.rm as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Permission denied'));
+      (fs.rm as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Permission denied'),
+      );
 
       await expect(deleteIndex(mockProjectPath)).resolves.not.toThrow();
     });
@@ -297,10 +299,10 @@ describe('Index Storage', () => {
 
       await clearAllIndexes();
 
-      expect(fs.rm).toHaveBeenCalledWith(
-        expect.stringContaining('.cadre/indexes'),
-        { recursive: true, force: true },
-      );
+      expect(fs.rm).toHaveBeenCalledWith(expect.stringContaining('.cadre/indexes'), {
+        recursive: true,
+        force: true,
+      });
     });
 
     it('should handle errors gracefully', async () => {

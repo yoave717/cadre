@@ -2,7 +2,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import type { FileMetadata, FileIndex, Symbol, ProgressCallback } from './types.js';
-import { extractSymbols, extractImports, extractExports, isLanguageSupported } from './symbol-extractor.js';
+import {
+  extractSymbols,
+  extractImports,
+  extractExports,
+  isLanguageSupported,
+} from './symbol-extractor.js';
 
 const DEFAULT_IGNORE = [
   'node_modules',
@@ -132,10 +137,7 @@ function getLanguage(filePath: string): string | undefined {
 /**
  * Index a single file
  */
-export async function indexFile(
-  filePath: string,
-  projectRoot: string,
-): Promise<FileIndex | null> {
+export async function indexFile(filePath: string, projectRoot: string): Promise<FileIndex | null> {
   try {
     // Check if file should be ignored
     const relativePath = path.relative(projectRoot, filePath);

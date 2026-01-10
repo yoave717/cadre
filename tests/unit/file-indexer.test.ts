@@ -120,7 +120,9 @@ class User:
       const projectRoot = '/project';
       const filePath = '/project/error.ts';
 
-      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Access denied'));
+      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Access denied'),
+      );
 
       const result = await indexFile(filePath, projectRoot);
 

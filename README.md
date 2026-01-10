@@ -198,6 +198,7 @@ cadre index build
 ```
 
 This will scan your project and create an index containing:
+
 - All source files (excluding node_modules, .git, etc.)
 - All code symbols with their locations and types
 - Import/export relationships
@@ -215,6 +216,7 @@ src/config.ts:48 - function loadConfig (exported)
 ```
 
 The index enables much faster operations:
+
 - `search_symbols` - Find functions/classes instantly (vs. grep)
 - `find_files` - Locate files by name quickly (vs. glob)
 - `find_importers` - See what imports a module
@@ -233,6 +235,7 @@ This only re-indexes changed files, making it very fast.
 ### Index Storage
 
 Indexes are stored per-project in `~/.cadre/indexes/` using a hash of the project path. This means:
+
 - Each project has its own index
 - Indexes persist across sessions
 - Safe for multiple projects
@@ -243,6 +246,7 @@ Indexes are stored per-project in `~/.cadre/indexes/` using a hash of the projec
 Cadre has access to the following tools:
 
 ### File Operations
+
 | Tool               | Description                                |
 | ------------------ | ------------------------------------------ |
 | `read_file`        | Read file contents with line numbers       |
@@ -252,6 +256,7 @@ Cadre has access to the following tools:
 | `create_directory` | Create directories                         |
 
 ### Search Operations
+
 | Tool             | Description                             |
 | ---------------- | --------------------------------------- |
 | `glob`           | Find files by pattern (e.g., `**/*.ts`) |
@@ -259,20 +264,22 @@ Cadre has access to the following tools:
 | `directory_tree` | Show directory structure                |
 
 ### Index Operations (Fast Search)
-| Tool              | Description                                       |
-| ----------------- | ------------------------------------------------- |
-| `build_index`     | Build project index for fast search               |
-| `update_index`    | Update index incrementally (only changed files)   |
-| `search_symbols`  | Search for functions, classes, etc. (much faster) |
-| `find_files`      | Find files by name (faster than glob)             |
-| `get_file_symbols`| Get all symbols in a file                         |
-| `find_importers`  | Find files importing a specific module            |
-| `index_stats`     | Show index statistics                             |
+
+| Tool               | Description                                       |
+| ------------------ | ------------------------------------------------- |
+| `build_index`      | Build project index for fast search               |
+| `update_index`     | Update index incrementally (only changed files)   |
+| `search_symbols`   | Search for functions, classes, etc. (much faster) |
+| `find_files`       | Find files by name (faster than glob)             |
+| `get_file_symbols` | Get all symbols in a file                         |
+| `find_importers`   | Find files importing a specific module            |
+| `index_stats`      | Show index statistics                             |
 
 ### Shell Operations
-| Tool          | Description              |
-| ------------- | ------------------------ |
-| `run_command` | Execute shell commands   |
+
+| Tool          | Description            |
+| ------------- | ---------------------- |
+| `run_command` | Execute shell commands |
 
 ## Permission System
 
