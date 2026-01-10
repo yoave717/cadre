@@ -379,17 +379,36 @@ The AI agent has access to these Git workflow tools:
 
 ### Example Workflow
 
-```bash
-# Start working on a feature
-cadre "Implement user authentication"
+Cadre automatically handles the complete Git workflow when you ask it to work on a task:
 
-# Cadre will:
-# 1. Create branch: cadre/implement-user-authentication-x7k9p
-# 2. Make the necessary changes
-# 3. Commit with descriptive messages
-# 4. Create a PR with auto-generated description
+```bash
+# Just describe what you want
+cadre "Add user authentication with JWT"
+
+# Cadre will automatically:
+# 1. Check git status
+# 2. Create branch: cadre/add-user-authentication-with-jwt-x7k9p
+# 3. Implement the feature
+# 4. Commit changes with descriptive messages
+# 5. Create a PR with a meaningful summary explaining:
+#    - WHAT: Adds JWT-based authentication
+#    - HOW: Implementation details
+#    - WHY: Design rationale
+# 6. Include commit history and file statistics
 
 # The AI handles the entire workflow automatically!
+```
+
+**No manual Git commands needed!** Cadre understands it should:
+- Create a new branch when starting work
+- Make commits as it progresses
+- Create a PR when the work is complete
+- Provide meaningful context in PR descriptions
+
+You can also explicitly control the workflow:
+```bash
+cadre "implement login but don't create a PR yet"
+cadre "create a PR for the current changes"
 ```
 
 ## Tools

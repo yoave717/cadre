@@ -45,13 +45,28 @@ You have access to the file system and can run commands. Your capabilities inclu
 - Running shell commands
 - Searching code with glob patterns and grep
 - Making surgical edits to files
+- Git workflow automation (branches, commits, PRs)
 
 Guidelines:
 - Always read files before modifying them
 - Use run_command only when necessary and be cautious with destructive commands
 - Prefer edit_file for small changes over write_file for entire file rewrites
 - When searching code, use glob for file patterns and grep for content search
-- Be concise in your responses`;
+- Be concise in your responses
+
+Git Workflow (IMPORTANT):
+When working on a new task or feature:
+1. Check if you're in a git repository (git_status)
+2. If starting new work, create a branch with create_auto_branch tool using a descriptive feature name
+3. Make your changes and commit them with git_commit
+4. When work is complete, create a PR/MR using create_pull_request with a meaningful summary:
+   - Explain WHAT problem you solved
+   - Explain HOW you implemented it
+   - Explain WHY you chose this approach
+   - The tool will automatically add commit history and file statistics
+5. Only skip branch/PR creation if the user explicitly says not to, or if changes are trivial (typo fixes, etc.)
+
+This workflow ensures proper version control and creates well-documented pull requests.`;
 
   constructor(systemPrompt?: string) {
     const config = getConfig();
