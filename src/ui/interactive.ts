@@ -8,6 +8,29 @@ import { Agent, HistoryItem } from '../agent/index.js';
 import { saveConversation } from '../commands/save.js';
 import { loadConversation, listConversations } from '../commands/load.js';
 import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
+
+/**
+ * Display a cool CLI entrance banner
+ */
+function displayBanner(): void {
+  const banner = `
+   ${chalk.cyan('╔═══════════════════════════════════════════════════════╗')}
+   ${chalk.cyan('║')}                                                       ${chalk.cyan('║')}
+   ${chalk.cyan('║')}      ${chalk.bold.blue('█████╗  █████╗ ██████╗ ██████╗ ███████╗')}     ${chalk.cyan('║')}
+   ${chalk.cyan('║')}     ${chalk.bold.blue('██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔════╝')}     ${chalk.cyan('║')}
+   ${chalk.cyan('║')}     ${chalk.bold.blue('██║  ╚═╝███████║██║  ██║██████╔╝█████╗')}       ${chalk.cyan('║')}
+   ${chalk.cyan('║')}     ${chalk.bold.blue('██║  ██╗██╔══██║██║  ██║██╔══██╗██╔══╝')}       ${chalk.cyan('║')}
+   ${chalk.cyan('║')}     ${chalk.bold.blue('╚█████╔╝██║  ██║██████╔╝██║  ██║███████╗')}     ${chalk.cyan('║')}
+   ${chalk.cyan('║')}      ${chalk.bold.blue('╚════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝')}     ${chalk.cyan('║')}
+   ${chalk.cyan('║')}                                                       ${chalk.cyan('║')}
+   ${chalk.cyan('║')}          ${chalk.dim('Your AI-Powered Development Assistant')}         ${chalk.cyan('║')}
+   ${chalk.cyan('║')}                                                       ${chalk.cyan('║')}
+   ${chalk.cyan('╚═══════════════════════════════════════════════════════╝')}
+
+   ${chalk.dim('Type')} ${chalk.green('/help')} ${chalk.dim('for commands ·')} ${chalk.green('/exit')} ${chalk.dim('to quit')}
+`;
+  console.log(banner);
+}
 import { getConfig } from '../config.js';
 import { BranchManager } from '../context/branch-manager.js';
 import { SessionManager } from '../context/session-manager.js';
@@ -136,8 +159,7 @@ export const startInteractiveSession = async (
   systemPrompt?: string,
   loadFilePath?: string,
 ): Promise<void> => {
-  console.log(chalk.bold.blue('Welcome to Cadre'));
-  console.log(chalk.dim('Type /help for commands, /exit to quit\n'));
+  displayBanner();
 
   // Check Config
   const config = getConfig();
