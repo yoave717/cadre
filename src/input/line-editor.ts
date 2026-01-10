@@ -4,6 +4,7 @@ import { HistoryManager } from './history-manager.js';
 export interface LineEditorOptions {
   prompt?: string;
   mask?: boolean; // For future password support if needed/optional
+  completionCallback?: (text: string) => string[]; // Tab completion callback
 }
 
 export class LineEditor {
@@ -18,13 +19,17 @@ export class LineEditor {
   private searchQuery: string = '';
   private searchMatches: string[] = [];
   private searchIndex: number = 0;
+  private completionCallback: ((text: string) => string[]) | null = null;
+  private completions: string[] = [];
+  private completionIndex: number = 0;
+  private completionPrefix: string = '';
 
   constructor() {}
 
   /**
    * Read a line of input from stdout.
    */
-  public async read(prompt: string): Promise<string> {
+  public async read(prompt: string, options?: LineEditorOptions): Promise<string> {
     if (this.active) {
       throw new Error('LineEditor is already active.');
     }
@@ -38,6 +43,10 @@ export class LineEditor {
     this.searchQuery = '';
     this.searchMatches = [];
     this.searchIndex = 0;
+    this.completionCallback = options?.completionCallback || null;
+    this.completions = [];
+    this.completionIndex = 0;
+    this.completionPrefix = '';
 
     return new Promise((resolve, reject) => {
       this.resolve = resolve;
@@ -151,6 +160,12 @@ export class LineEditor {
         return;
       }
 
+      // Tab (9) - Tab completion
+      if (charCode === 9) {
+        this.handleTab();
+        return;
+      }
+
       // Normal characters (printable)
       if (charCode >= 32 && charCode !== 127) {
         if (this.searchMode) {
@@ -239,6 +254,11 @@ export class LineEditor {
   }
 
   private insert(text: string) {
+    // Reset completions when user types (not tab)
+    this.completions = [];
+    this.completionIndex = 0;
+    this.completionPrefix = '';
+
     const left = this.buffer.slice(0, this.cursor);
     const right = this.buffer.slice(this.cursor);
     this.buffer = left + text + right;
@@ -354,5 +374,36 @@ export class LineEditor {
       this.searchIndex = 0;
       this.render();
     }
+  }
+
+  private handleTab() {
+    if (!this.completionCallback) {
+      // No completion callback, ignore Tab
+      return;
+    }
+
+    // If we don't have active completions, start a new completion cycle
+    if (this.completions.length === 0) {
+      this.completions = this.completionCallback(this.buffer);
+      this.completionIndex = 0;
+      this.completionPrefix = this.buffer;
+
+      if (this.completions.length === 0) {
+        // No completions available
+        return;
+      }
+    }
+
+    // Cycle through completions
+    const completion = this.completions[this.completionIndex];
+
+    // Replace buffer with completion
+    this.buffer = completion;
+    this.cursor = this.buffer.length;
+
+    // Move to next completion for next Tab press
+    this.completionIndex = (this.completionIndex + 1) % this.completions.length;
+
+    this.render();
   }
 }

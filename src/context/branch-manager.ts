@@ -171,4 +171,39 @@ export class BranchManager {
       await fs.promises.unlink(filePath);
     }
   }
+
+  /**
+   * Check if a branch exists.
+   */
+  branchExists(name: string): boolean {
+    const filePath = this.getBranchPath(name);
+    return fs.existsSync(filePath);
+  }
+
+  /**
+   * Checkout to a different branch.
+   * Saves current history to currentBranch (if provided), then loads target branch.
+   * @param targetBranch - Branch to switch to
+   * @param currentBranch - Current active branch (null for main)
+   * @param currentHistory - Current conversation history to save
+   * @returns History from the target branch
+   */
+  async checkout(
+    targetBranch: string,
+    currentBranch: string | null,
+    currentHistory: HistoryItem[],
+  ): Promise<HistoryItem[]> {
+    // Validate target branch exists
+    if (!this.branchExists(targetBranch)) {
+      throw new Error(`Branch '${targetBranch}' not found.`);
+    }
+
+    // Auto-save current branch before checkout
+    if (currentBranch) {
+      await this.saveBranch(currentBranch, currentHistory);
+    }
+
+    // Load target branch history
+    return this.loadBranch(targetBranch);
+  }
 }

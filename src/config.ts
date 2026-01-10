@@ -27,6 +27,7 @@ export interface ConfigSchema {
   tokenCostOutput: number;
   systemPrompt?: string;
   saveDirectory?: string;
+  warnUnsavedBranchSwitch?: boolean;
 }
 
 const config = new Conf<ConfigSchema>({
@@ -61,6 +62,10 @@ export const getConfig = (): ConfigSchema => {
       parseFloat(process.env.TOKEN_COST_OUTPUT || '') || config.get('tokenCostOutput') || 15.0,
     systemPrompt: process.env.SYSTEM_PROMPT || config.get('systemPrompt'),
     saveDirectory: process.env.SAVE_DIRECTORY || config.get('saveDirectory'),
+    warnUnsavedBranchSwitch:
+      process.env.WARN_UNSAVED_BRANCH_SWITCH === 'true' ||
+      config.get('warnUnsavedBranchSwitch') ||
+      false,
   };
 };
 
