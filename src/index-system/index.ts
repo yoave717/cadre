@@ -6,8 +6,6 @@
 export { IndexManager } from './manager';
 export { SqliteIndexManager } from './sqlite-manager';
 export {
-  loadIndex,
-  saveIndex,
   deleteIndex,
   listIndexedProjects,
   getIndexStats,

@@ -110,26 +110,21 @@ export class SqliteIndexManager {
   }
 
   /**
-   * Import a JSON index into SQLite
+   * Set a metadata value
    */
-  importFromJSON(index: ProjectIndex): void {
-    const transaction = this.db.transaction(() => {
-      // Clear existing data
-      this.db.exec('DELETE FROM files');
-      this.db.exec('DELETE FROM metadata');
+  setMetadata(key: string, value: string): void {
+    const stmt = this.db.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)');
+    stmt.run(key, value);
+  }
 
-      // Store metadata
-      const setMeta = this.db.prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)');
-      setMeta.run('version', index.version.toString());
-      setMeta.run('project_root', index.projectRoot);
-      setMeta.run('indexed_at', index.indexed_at.toString());
-      setMeta.run('total_files', index.totalFiles.toString());
-      setMeta.run('total_symbols', index.totalSymbols.toString());
-
-      this.insertBatchInternal(index.files);
-    });
-
-    transaction();
+  /**
+   * Get a metadata value
+   */
+  getMetadata(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM metadata WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
+    return row ? row.value : null;
   }
 
   /**
@@ -285,6 +280,67 @@ export class SqliteIndexManager {
   }
 
   /**
+   * Find files by glob pattern
+   */
+  globFiles(pattern: string, limit: number = 1000): string[] {
+    // SQLite GLOB is case sensitive and uses:
+    // * : matches any sequence of characters
+    // ? : matches any single character
+    // [abc] : matches one character from the list
+    //
+    // Standard glob patterns often use ** for recursive, which SQLite GLOB doesn't support directly as "directory recursive".
+    // However, * in SQLite GLOB matches separators too! So * acts like ** in many shells if not restricted.
+    // But typically we want * to NOT match separators.
+    //
+    // Let's implement a hybrid approach:
+    // If the pattern contains `**`, we might need to fetch more and filter?
+    // Or we rely on the fact that `*` matches everything including `/`.
+    //
+    // Actually, SQLite `GLOB` `*` matches `/`.
+    // So `src/*.ts` in SQLite GLOB matches `src/foo/bar.ts`!
+    // This is NOT what standard glob `*.ts` does (which is non-recursive).
+    //
+    // To support standard glob behavior accurately with SQLite is hard.
+    // But for "find files" fuzzy search, maybe `LIKE` is better?
+    //
+    // User wants "proper" glob usage.
+    // If we can't map 1:1, maybe we fetch all paths and use minimatch?
+    // Fetching all paths is fast (SELECT path FROM files).
+    // Let's try to do that for accuracy if the pattern looks complex.
+    //
+    // Optimization:
+    // If pattern is simple (no `**` and assuming we want recursive?), we can use GLOB.
+    //
+    // Let's provide a method that fetches ALL paths if we want full glob support,
+    // OR filter in SQL if possible.
+    //
+    // For now, let's implement `globFiles` by fetching ALL paths and filtering in memory using `minimatch` or similar?
+    // We don't have `minimatch` imported in this file.
+    //
+    // Alternative: Just expose `getAllFiles()` paths and let the caller (`IndexManager` or `glob` tool) do the filtering.
+    // That is probably safer for correctness.
+    //
+    // But to reduce IPC/memory, we might want some filtering.
+    //
+    // Let's implement a simple SQL-based approximation that assumes `*` matches everything (recursive).
+    // Or, stick to the plan: use `GLOB` and documented behavior.
+
+    // For this task, let's implement `globFiles` that uses SQLite GLOB.
+    // Note constraints: Case sensitivity of GLOB (Unix style).
+
+    const stmt = this.db.prepare(`
+      SELECT path
+      FROM files
+      WHERE path GLOB ?
+      ORDER BY path
+      LIMIT ?
+    `);
+
+    const rows = stmt.all(pattern, limit) as Array<{ path: string }>;
+    return rows.map((row) => row.path);
+  }
+
+  /**
    * Get symbols in a file
    */
   getFileSymbols(filePath: string): Symbol[] {
@@ -329,6 +385,47 @@ export class SqliteIndexManager {
 
     const rows = stmt.all(`%${moduleName}%`) as Array<{ path: string }>;
     return rows.map((row) => row.path);
+  }
+
+  /**
+   * Get all files with metadata (for incremental updates)
+   */
+  getAllFiles(): Array<{ path: string; absolutePath: string; mtime: number; hash: string }> {
+    const stmt = this.db.prepare(`
+      SELECT path, absolute_path, mtime, hash
+      FROM files
+    `);
+
+    const rows = stmt.all() as Array<{
+      path: string;
+      absolute_path: string;
+      mtime: number;
+      hash: string;
+    }>;
+
+    return rows.map((row) => ({
+      path: row.path,
+      absolutePath: row.absolute_path,
+      mtime: row.mtime,
+      hash: row.hash,
+    }));
+  }
+
+  /**
+   * Get all file paths (for globbing)
+   */
+  getAllPaths(): string[] {
+    const stmt = this.db.prepare('SELECT path FROM files ORDER BY path');
+    const rows = stmt.all() as Array<{ path: string }>;
+    return rows.map((r) => r.path);
+  }
+
+  /**
+   * Delete a file from the index
+   */
+  deleteFile(path: string): void {
+    // Cascading deletes will handle symbols, imports, exports
+    this.db.prepare('DELETE FROM files WHERE path = ?').run(path);
   }
 
   /**

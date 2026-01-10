@@ -7,16 +7,32 @@ import chalk from 'chalk';
 import { IndexManager } from '../index-system/index';
 import { IndexProgress } from '../index-system/types';
 
-let indexManager: IndexManager | null = null;
+const indexManagers = new Map<string, IndexManager>();
 
 /**
- * Get or create index manager for current directory
+ * Get or create index manager for a directory
  */
-function getIndexManager(): IndexManager {
-  if (!indexManager) {
-    indexManager = new IndexManager(process.cwd());
+function getIndexManager(dir: string = process.cwd()): IndexManager {
+  const root = path.resolve(dir);
+  if (!indexManagers.has(root)) {
+    indexManagers.set(root, new IndexManager(root));
   }
-  return indexManager;
+  return indexManagers.get(root)!;
+}
+
+/**
+ * Update index for a single file (used by other tools)
+ */
+export async function updateFileIndex(filePath: string): Promise<void> {
+  const absolutePath = path.resolve(filePath);
+  const projectRoot = process.cwd(); // Assume CWD is project root for now
+
+  // Only update if we have an active manager or if we want to be proactive
+  const manager = getIndexManager(projectRoot);
+
+  // Always attempt to index the file.
+  // The IndexManager is initialized (DB created), so we should use it.
+  await manager.indexFile(absolutePath);
 }
 
 /**
@@ -100,6 +116,26 @@ export async function findFiles(
   }
 
   return output.join('\n');
+}
+
+/**
+ * Get all file paths from index
+ */
+export async function getAllFilePaths(): Promise<string[]> {
+  const manager = getIndexManager();
+  const loaded = await manager.load();
+  if (!loaded) return [];
+  return manager.getAllFilePaths();
+}
+
+/**
+ * Find files by name (for smart resolution)
+ */
+export async function findFilesByName(filename: string): Promise<string[]> {
+  const manager = getIndexManager();
+  const loaded = await manager.load();
+  if (!loaded) return [];
+  return manager.findFilesByName(filename);
 }
 
 /**

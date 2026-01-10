@@ -145,6 +145,15 @@ export const multiEditFile = async (
     }
 
     await fs.writeFile(absolutePath, content, 'utf-8');
+
+    // Update index if applicable
+    try {
+      const { updateFileIndex } = await import('./index.js');
+      await updateFileIndex(absolutePath);
+    } catch (error) {
+      // Ignore indexing errors
+    }
+
     return `Successfully applied ${edits.length} edit(s) to ${filePath} (total ${totalCount} replacements).`;
   } catch (error) {
     const err = error as Error;
@@ -191,6 +200,14 @@ export const insertAtLine = async (
     lines.splice(lineNumber - 1, 0, content);
 
     await fs.writeFile(absolutePath, lines.join('\n'), 'utf-8');
+
+    // Update index if applicable
+    try {
+      const { updateFileIndex } = await import('./index.js');
+      await updateFileIndex(absolutePath);
+    } catch (error) {
+      // Ignore indexing errors
+    }
 
     return `Successfully inserted content at line ${lineNumber} in ${filePath}.`;
   } catch (error) {
@@ -239,6 +256,14 @@ export const deleteLines = async (
     lines.splice(startLine - 1, deletedCount);
 
     await fs.writeFile(absolutePath, lines.join('\n'), 'utf-8');
+
+    // Update index if applicable
+    try {
+      const { updateFileIndex } = await import('./index.js');
+      await updateFileIndex(absolutePath);
+    } catch (error) {
+      // Ignore indexing errors
+    }
 
     return `Successfully deleted ${deletedCount} line(s) from ${filePath}.`;
   } catch (error) {

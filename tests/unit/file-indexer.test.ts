@@ -267,8 +267,85 @@ class User:
       (fs.readdir as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mockFiles);
 
       const result = await indexDirectory(dirPath, projectRoot, 0);
-
       expect(Object.keys(result).length).toBe(0);
+    });
+
+    it('should handle symlink loops gracefully', async () => {
+      const projectRoot = '/project';
+      const dirPath = '/project';
+
+      // Setup a structure where /project/loop points back to /project
+      interface MockDirent {
+        name: string;
+        isDirectory: () => boolean;
+        isFile: () => boolean;
+        isSymbolicLink: () => boolean;
+      }
+
+      // Root contains 'loop' (dir/link) and 'file.ts'
+      (fs.readdir as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        async (path: string) => {
+          if (path === '/project') {
+            return [
+              {
+                name: 'loop',
+                isDirectory: () => true,
+                isFile: () => false,
+                isSymbolicLink: () => true,
+              },
+              {
+                name: 'file.ts',
+                isDirectory: () => false,
+                isFile: () => true,
+                isSymbolicLink: () => false,
+              },
+            ];
+          }
+          // Attempting to read inside the loop should return the same content as root
+          // Because loop -> /project
+          if (path === '/project/loop') {
+            return [
+              {
+                name: 'loop',
+                isDirectory: () => true,
+                isFile: () => false,
+                isSymbolicLink: () => true,
+              },
+              {
+                name: 'file.ts',
+                isDirectory: () => false,
+                isFile: () => true,
+                isSymbolicLink: () => false,
+              },
+            ];
+          }
+          return [];
+        },
+      );
+
+      // Mock realpath to simulate loop resolution
+      // /project/loop -> /project
+      (fs.realpath as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (p: string) => {
+        if (p === '/project/loop') return '/project';
+        return p;
+      });
+
+      (fs.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        isFile: () => true,
+        size: 100,
+        mtimeMs: Date.now(),
+      });
+
+      (fs.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('export const x = 1;');
+
+      const result = await indexDirectory(dirPath, projectRoot);
+
+      // Should contain file.ts
+      expect(result['file.ts']).toBeDefined();
+
+      // Should NOT contain loop/file.ts (deduplicated by realpath check)
+      // or at least shouldn't crash with stack overflow
+      expect(Object.keys(result).length).toBe(1);
     });
   });
 

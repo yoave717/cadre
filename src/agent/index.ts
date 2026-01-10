@@ -155,7 +155,9 @@ Guidelines:
           {
             model: config.modelName,
             // Strip timestamps for OpenAI API
-            messages: history.map(({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam),
+            messages: history.map(
+              ({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam,
+            ),
             tools: TOOLS,
             tool_choice: 'auto',
             stream: true,

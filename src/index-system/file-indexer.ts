@@ -494,26 +494,35 @@ async function collectFiles(
  * Index all files in a directory recursively
  * Uses parallel processing for performance
  */
-export async function indexDirectory(
+/**
+ * Scan directory recursively to get all files (without indexing)
+ */
+export async function scanDirectory(
   dirPath: string,
   projectRoot: string,
   maxDepth: number = 10,
-  _currentDepth: number = 0, // Kept for signature compatibility, unused in new impl
+): Promise<string[]> {
+  const files: string[] = [];
+  const visited = new Set<string>();
+  await collectFiles(dirPath, projectRoot, maxDepth, 0, files, visited);
+  return files;
+}
+
+/**
+ * Index a specific list of files
+ */
+export async function indexFiles(
+  files: string[],
+  projectRoot: string,
   progressCallback?: ProgressCallback,
   progressState?: { current: number; total: number },
-  concurrency: number = os.cpus().length, // Default to CPU count
+  concurrency: number = os.cpus().length,
   onFileIndexed?: (file: FileIndex) => Promise<void> | void,
   limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
   warnings?: IndexingWarning[],
 ): Promise<Record<string, FileIndex>> {
   const fileIndexes: Record<string, FileIndex> = {};
-  const files: string[] = [];
 
-  const visited = new Set<string>();
-  // Step 1: Collect all files first (fast scanning)
-  await collectFiles(dirPath, projectRoot, maxDepth, 0, files, visited);
-
-  // Step 2: Process files in parallel
   await limitConcurrency(files, concurrency, async (fullPath) => {
     const relativePath = path.relative(projectRoot, fullPath);
 
@@ -541,6 +550,38 @@ export async function indexDirectory(
   });
 
   return fileIndexes;
+}
+
+/**
+ * Index all files in a directory recursively
+ * Uses parallel processing for performance
+ */
+export async function indexDirectory(
+  dirPath: string,
+  projectRoot: string,
+  maxDepth: number = 10,
+  _currentDepth: number = 0, // Kept for signature compatibility, unused in new impl
+  progressCallback?: ProgressCallback,
+  progressState?: { current: number; total: number },
+  concurrency: number = os.cpus().length, // Default to CPU count
+  onFileIndexed?: (file: FileIndex) => Promise<void> | void,
+  limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
+  warnings?: IndexingWarning[],
+): Promise<Record<string, FileIndex>> {
+  // Step 1: Collect files
+  const files = await scanDirectory(dirPath, projectRoot, maxDepth);
+
+  // Step 2: Index files
+  return indexFiles(
+    files,
+    projectRoot,
+    progressCallback,
+    progressState,
+    concurrency,
+    onFileIndexed,
+    limits,
+    warnings,
+  );
 }
 
 /**
