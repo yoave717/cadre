@@ -1,7 +1,7 @@
 import path from 'path';
-import type { ProjectIndex, FileIndex, IndexStats, SearchResult, Symbol } from './types.js';
+import type { ProjectIndex, FileIndex, IndexStats, SearchResult, Symbol, ProgressCallback } from './types.js';
 import { loadIndex, saveIndex, hashProjectPath } from './storage.js';
-import { indexDirectory, indexFile, hasFileChanged } from './file-indexer.js';
+import { indexDirectory, indexFile, hasFileChanged, countFiles } from './file-indexer.js';
 
 export class IndexManager {
   private projectRoot: string;
@@ -22,13 +22,51 @@ export class IndexManager {
   /**
    * Build a complete index of the project
    */
-  async buildIndex(): Promise<IndexStats> {
+  async buildIndex(progressCallback?: ProgressCallback): Promise<IndexStats> {
     const startTime = Date.now();
 
-    // Index all files
-    const files = await indexDirectory(this.projectRoot, this.projectRoot);
+    // Count total files first for progress tracking
+    if (progressCallback) {
+      progressCallback({
+        phase: 'scanning',
+        current: 0,
+        total: 0,
+        message: 'Scanning project files...',
+      });
+    }
+
+    const totalFiles = await countFiles(this.projectRoot, this.projectRoot);
+
+    if (progressCallback) {
+      progressCallback({
+        phase: 'indexing',
+        current: 0,
+        total: totalFiles,
+        message: `Indexing ${totalFiles} files...`,
+      });
+    }
+
+    // Index all files with progress tracking
+    const progressState = { current: 0, total: totalFiles };
+    const files = await indexDirectory(
+      this.projectRoot,
+      this.projectRoot,
+      10,
+      0,
+      progressCallback,
+      progressState,
+    );
 
     // Calculate statistics
+    if (progressCallback) {
+      progressCallback({
+        phase: 'calculating',
+        current: 0,
+        total: Object.keys(files).length,
+        message: 'Calculating statistics...',
+      });
+    }
+
     let totalSymbols = 0;
     let totalSize = 0;
     const languages: Record<string, number> = {};
@@ -56,6 +94,15 @@ export class IndexManager {
     };
 
     // Save to disk
+    if (progressCallback) {
+      progressCallback({
+        phase: 'saving',
+        current: 0,
+        total: 1,
+        message: 'Saving index to disk...',
+      });
+    }
+
     await saveIndex(this.index);
 
     const duration = Date.now() - startTime;

@@ -105,9 +105,36 @@ export async function buildIndex(): Promise<string> {
   const manager = getIndexManager();
 
   const output: string[] = [];
-  output.push(chalk.blue('Building project index...\n'));
+  const progressLines: string[] = [];
 
-  const stats = await manager.buildIndex();
+  const stats = await manager.buildIndex((progress) => {
+    let message = '';
+    if (progress.phase === 'scanning') {
+      message = 'Scanning project files...';
+    } else if (progress.phase === 'indexing') {
+      const percent = progress.total > 0
+        ? Math.round((progress.current / progress.total) * 100)
+        : 0;
+      message = `Indexing files: ${progress.current}/${progress.total} (${percent}%)`;
+      if (progress.currentFile) {
+        message += ` - ${progress.currentFile}`;
+      }
+    } else if (progress.phase === 'calculating') {
+      message = 'Calculating statistics...';
+    } else if (progress.phase === 'saving') {
+      message = 'Saving index...';
+    }
+    progressLines.push(message);
+  });
+
+  // Include progress in output for transparency
+  if (progressLines.length > 0) {
+    output.push(chalk.dim('Progress:'));
+    output.push(chalk.dim(`  ${progressLines[0]}`)); // First (scanning)
+    output.push(chalk.dim(`  ${progressLines[Math.floor(progressLines.length / 2)]}`)); // Middle
+    output.push(chalk.dim(`  ${progressLines[progressLines.length - 1]}`)); // Last
+    output.push('');
+  }
 
   output.push(chalk.green('✓ Index built successfully!\n'));
   output.push(`Files indexed: ${chalk.bold(stats.totalFiles.toString())}`);

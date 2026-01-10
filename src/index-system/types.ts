@@ -55,3 +55,13 @@ export interface SearchResult {
   context?: string;
   score: number; // Relevance score
 }
+
+export interface IndexProgress {
+  phase: 'scanning' | 'indexing' | 'calculating' | 'saving';
+  current: number;
+  total: number;
+  currentFile?: string;
+  message?: string;
+}
+
+export type ProgressCallback = (progress: IndexProgress) => void;

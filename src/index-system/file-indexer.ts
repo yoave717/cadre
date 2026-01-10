@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import type { FileMetadata, FileIndex, Symbol } from './types.js';
+import type { FileMetadata, FileIndex, Symbol, ProgressCallback } from './types.js';
 import { extractSymbols, extractImports, extractExports, isLanguageSupported } from './symbol-extractor.js';
 
 const DEFAULT_IGNORE = [
@@ -196,6 +196,42 @@ export async function indexFile(
 }
 
 /**
+ * Count total files to be indexed (for progress tracking)
+ */
+export async function countFiles(
+  dirPath: string,
+  projectRoot: string,
+  maxDepth: number = 10,
+  currentDepth: number = 0,
+): Promise<number> {
+  let count = 0;
+
+  if (currentDepth >= maxDepth) return count;
+
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      const relativePath = path.relative(projectRoot, fullPath);
+
+      // Skip ignored paths
+      if (shouldIgnore(relativePath)) continue;
+
+      if (entry.isDirectory()) {
+        count += await countFiles(fullPath, projectRoot, maxDepth, currentDepth + 1);
+      } else if (entry.isFile() && !isBinaryFile(fullPath)) {
+        count++;
+      }
+    }
+  } catch (error) {
+    // Skip directories that can't be read
+  }
+
+  return count;
+}
+
+/**
  * Index all files in a directory recursively
  */
 export async function indexDirectory(
@@ -203,6 +239,8 @@ export async function indexDirectory(
   projectRoot: string,
   maxDepth: number = 10,
   currentDepth: number = 0,
+  progressCallback?: ProgressCallback,
+  progressState?: { current: number; total: number },
 ): Promise<Record<string, FileIndex>> {
   const fileIndexes: Record<string, FileIndex> = {};
 
@@ -220,9 +258,27 @@ export async function indexDirectory(
 
       if (entry.isDirectory()) {
         // Recursively index subdirectory
-        const subIndexes = await indexDirectory(fullPath, projectRoot, maxDepth, currentDepth + 1);
+        const subIndexes = await indexDirectory(
+          fullPath,
+          projectRoot,
+          maxDepth,
+          currentDepth + 1,
+          progressCallback,
+          progressState,
+        );
         Object.assign(fileIndexes, subIndexes);
       } else if (entry.isFile()) {
+        // Report progress
+        if (progressCallback && progressState) {
+          progressState.current++;
+          progressCallback({
+            phase: 'indexing',
+            current: progressState.current,
+            total: progressState.total,
+            currentFile: relativePath,
+          });
+        }
+
         // Index file
         const fileIndex = await indexFile(fullPath, projectRoot);
         if (fileIndex) {

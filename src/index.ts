@@ -192,11 +192,44 @@ program
     try {
       if (!action || action === 'build') {
         // Build index
-        console.log(chalk.blue('Building project index...'));
         const manager = new IndexManager(projectPath);
-        const stats = await manager.buildIndex();
 
-        console.log(chalk.green('\n✓ Index built successfully!\n'));
+        // Show progress
+        let lastProgress = '';
+        const stats = await manager.buildIndex((progress) => {
+          let message = '';
+          if (progress.phase === 'scanning') {
+            message = chalk.blue('🔍 Scanning project files...');
+          } else if (progress.phase === 'indexing') {
+            const percent = progress.total > 0
+              ? Math.round((progress.current / progress.total) * 100)
+              : 0;
+            message = chalk.blue(
+              `📝 Indexing files... ${progress.current}/${progress.total} (${percent}%)`,
+            );
+            if (progress.currentFile && progress.currentFile.length < 50) {
+              message += chalk.dim(` - ${progress.currentFile}`);
+            }
+          } else if (progress.phase === 'calculating') {
+            message = chalk.blue('📊 Calculating statistics...');
+          } else if (progress.phase === 'saving') {
+            message = chalk.blue('💾 Saving index to disk...');
+          }
+
+          // Clear previous line and write new progress
+          if (lastProgress) {
+            process.stdout.write('\r\x1b[K');
+          }
+          process.stdout.write(message);
+          lastProgress = message;
+        });
+
+        // Clear progress line and show final results
+        if (lastProgress) {
+          process.stdout.write('\r\x1b[K');
+        }
+
+        console.log(chalk.green('✓ Index built successfully!\n'));
         console.log(`Files indexed: ${chalk.bold(stats.totalFiles.toString())}`);
         console.log(`Symbols found: ${chalk.bold(stats.totalSymbols.toString())}`);
         console.log(`Total size: ${chalk.bold((stats.totalSize / 1024).toFixed(2))} KB`);
