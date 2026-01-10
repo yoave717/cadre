@@ -9,6 +9,7 @@ import {
   IndexManager,
   listIndexedProjects,
   clearAllIndexes,
+  clearProjectIndex,
   getIndexStats,
 } from './index-system/index.js';
 
@@ -237,10 +238,38 @@ program
         console.log(`Files indexed: ${chalk.bold(stats.totalFiles.toString())}`);
         console.log(`Symbols found: ${chalk.bold(stats.totalSymbols.toString())}`);
         console.log(`Total size: ${chalk.bold((stats.totalSize / 1024).toFixed(2))} KB`);
-        console.log(`Duration: ${chalk.bold(stats.duration.toString())} ms\n`);
+        console.log(`Duration: ${chalk.bold(stats.duration.toString())} ms`);
+
+        // Show warnings if any files were skipped
+        if (stats.warnings && stats.warnings.length > 0) {
+          console.log(chalk.yellow(`\n⚠  ${stats.skipped} file(s) skipped:\n`));
+          // Show up to 10 warnings
+          const displayWarnings = stats.warnings.slice(0, 10);
+          for (const warning of displayWarnings) {
+            const reasonEmoji =
+              warning.reason === 'timeout'
+                ? '⏱️ '
+                : warning.reason === 'size'
+                  ? '📦'
+                  : warning.reason === 'lines'
+                    ? '📄'
+                    : warning.reason === 'line-length'
+                      ? '📏'
+                      : '⚠️ ';
+            console.log(
+              chalk.yellow(`  ${reasonEmoji} ${warning.file}`),
+            );
+            console.log(chalk.dim(`     ${warning.details}`));
+          }
+          if (stats.warnings.length > 10) {
+            console.log(
+              chalk.dim(`  ... and ${stats.warnings.length - 10} more`),
+            );
+          }
+        }
 
         if (Object.keys(stats.languages).length > 0) {
-          console.log(chalk.bold('Languages:'));
+          console.log(chalk.bold('\nLanguages:'));
           for (const [lang, count] of Object.entries(stats.languages)) {
             console.log(`  ${lang}: ${count} files`);
           }
@@ -292,11 +321,45 @@ program
         }
         console.log('');
       } else if (action === 'clear') {
-        // Clear all indexes
-        await clearAllIndexes();
-        console.log(chalk.green('All indexes cleared.'));
+        // Check for --all flag
+        const allFlag = program.args.includes('--all');
+
+        if (allFlag) {
+          // Clear ALL indexes (requires confirmation)
+          console.log(
+            chalk.yellow(
+              '⚠  WARNING: This will clear indexes for ALL projects, not just the current one.',
+            ),
+          );
+
+          // Dynamically import readline for confirmation
+          const readline = await import('readline');
+          const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
+
+          const answer: string = await new Promise((resolve) => {
+            rl.question(chalk.yellow('Continue? (y/N): '), resolve);
+          });
+          rl.close();
+
+          if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+            await clearAllIndexes();
+            console.log(chalk.green('✓ All project indexes cleared.'));
+          } else {
+            console.log(chalk.dim('Cancelled.'));
+          }
+        } else {
+          // Clear ONLY current project index (safe default)
+          await clearProjectIndex(projectPath);
+          console.log(chalk.green('✓ Index cleared for current project.'));
+          console.log(chalk.dim('Tip: Use "cadre index clear --all" to clear all project indexes.'));
+        }
       } else {
-        console.log(chalk.yellow('Usage: cadre index [build|update|stats|list|clear]'));
+        console.log(
+          chalk.yellow('Usage: cadre index [build|update|stats|list|clear [--all]]'),
+        );
       }
     } catch (error) {
       const err = error as Error;

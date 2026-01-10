@@ -96,6 +96,8 @@ describe('IndexManager', () => {
         expect.any(Object),
         undefined,
         expect.any(Function),
+        expect.any(Object), // limits
+        expect.any(Array), // warnings
       );
       expect(storage.saveIndex).toHaveBeenCalled();
     });

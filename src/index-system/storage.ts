@@ -161,7 +161,22 @@ export async function getIndexStats(projectPath: string): Promise<{
 }
 
 /**
- * Clear all indexes
+ * Clear index for a specific project
+ * This is the safe, default way to clear an index - it only affects the current project
+ */
+export async function clearProjectIndex(projectPath: string): Promise<void> {
+  try {
+    const indexDir = getIndexDir(projectPath);
+    await fs.rm(indexDir, { recursive: true, force: true });
+  } catch {
+    // Index doesn't exist or couldn't be deleted
+  }
+}
+
+/**
+ * Clear all indexes for all projects
+ * WARNING: This is a destructive operation that removes ALL project indexes
+ * Use clearProjectIndex() instead for project-specific clearing
  */
 export async function clearAllIndexes(): Promise<void> {
   try {
