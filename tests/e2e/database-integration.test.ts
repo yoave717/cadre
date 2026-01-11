@@ -5,8 +5,8 @@ import path from 'path';
 import crypto from 'crypto';
 import os from 'os';
 
-describe('E2E: SQLite Index Integration', () => {
-  const testProjectDir = path.join(process.cwd(), 'test-sqlite-e2e-' + Date.now());
+describe('E2E: Database Index Integration', () => {
+  const testProjectDir = path.join(process.cwd(), 'test-sqldb-e2e-' + Date.now());
   const indexDir = path.join(process.env.HOME || '', '.cadre', 'indexes');
 
   beforeAll(() => {
@@ -67,8 +67,8 @@ export function utilFunction() {
     }
   });
 
-  describe('Index Building with SQLite', () => {
-    it('should build index with both SQLite and JSON', () => {
+  describe('Index Building with Database', () => {
+    it('should build index successfully', () => {
       const output = execSync('cadre index build', {
         cwd: testProjectDir,
         encoding: 'utf-8',
@@ -99,7 +99,7 @@ export function utilFunction() {
   });
 
   describe('Index Statistics', () => {
-    it('should show correct stats from SQLite', { timeout: 30000 }, () => {
+    it('should show correct stats', { timeout: 30000 }, () => {
       execSync('cadre index build', { cwd: testProjectDir, stdio: 'pipe' });
 
       const output = execSync('cadre index stats', {

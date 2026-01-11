@@ -3,12 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { SqliteIndexManager } from '../../src/index-system/sqlite-manager';
+import { IndexDatabase } from '../../src/index-system/database-manager';
 
-describe('SqliteIndexManager', () => {
+describe('IndexDatabase', () => {
   // Use real temp directory like the actual getIndexDir does
-  const testProjectRoot = path.join(os.tmpdir(), 'test-sqlite-' + Date.now());
-  let manager: SqliteIndexManager;
+  const testProjectRoot = path.join(os.tmpdir(), 'test-sqldb-' + Date.now());
+  let manager: IndexDatabase;
 
   const mockFiles = {
     'src/index.ts': {
@@ -72,9 +72,10 @@ describe('SqliteIndexManager', () => {
     },
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Create manager - it will create the index directory automatically
-    manager = new SqliteIndexManager(testProjectRoot);
+    manager = new IndexDatabase(testProjectRoot);
+    await manager.init();
   });
 
   afterEach(() => {

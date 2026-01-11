@@ -203,6 +203,7 @@ program
   .description('Manage project index for fast search')
   .argument('[action]', 'Action: build, update, stats, list, clear')
   .option('--path <path>', 'Project path (defaults to current directory)')
+  .option('--all', 'Clear all project indexes (only for "clear" action)')
   .action(async (action, options) => {
     const projectPath = options.path || process.cwd();
 
@@ -328,8 +329,7 @@ program
         }
         console.log('');
       } else if (action === 'clear') {
-        // Check for --all flag
-        const allFlag = program.args.includes('--all');
+        const allFlag = options.all;
 
         if (allFlag) {
           // Clear ALL indexes (requires confirmation)

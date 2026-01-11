@@ -34,7 +34,7 @@ describe('Indexing Performance', () => {
   });
 
   it('should index 100 files in under 1 second', async () => {
-    const manager = new IndexManager(tmpDir, { useSqlite: true });
+    const manager = new IndexManager(tmpDir);
 
     const start = Date.now();
     const stats = await manager.buildIndex();

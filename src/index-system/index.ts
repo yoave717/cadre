@@ -4,7 +4,7 @@
  */
 
 export { IndexManager } from './manager';
-export { SqliteIndexManager } from './sqlite-manager';
+export { IndexDatabase } from './database-manager.js';
 export {
   deleteIndex,
   listIndexedProjects,

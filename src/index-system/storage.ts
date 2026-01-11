@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import initSqlJs from 'sql.js';
 
 const INDEX_DIR = path.join(os.homedir(), '.cadre', 'indexes');
 
@@ -39,25 +40,33 @@ export async function listIndexedProjects(): Promise<
     const entries = await fs.readdir(INDEX_DIR, { withFileTypes: true });
     const projects = [];
 
+    // Initialize SQL.js once
+    const SQL = await initSqlJs();
+
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const projectPath = path.join(INDEX_DIR, entry.name);
 
-        // Check for SQLite index
+        // Check for index
         try {
           const dbPath = path.join(projectPath, 'index.db');
           const stats = await fs.stat(dbPath);
           if (stats.isFile()) {
-            // We have a DB, try to read metadata using better-sqlite3
-            const Database = (await import('better-sqlite3')).default;
-            const db = new Database(dbPath, { readonly: true });
+            // Read file buffer
+            const buffer = await fs.readFile(dbPath);
+            const db = new SQL.Database(buffer);
 
             try {
-              const rows = db
-                .prepare(
-                  "SELECT key, value FROM metadata WHERE key IN ('project_root', 'indexed_at')",
-                )
-                .all() as Array<{ key: string; value: string }>;
+              const stmt = db.prepare(
+                "SELECT key, value FROM metadata WHERE key IN ('project_root', 'indexed_at')",
+              );
+
+              const rows: Array<{ key: string; value: string }> = [];
+              while (stmt.step()) {
+                const row = stmt.getAsObject();
+                rows.push({ key: row.key as string, value: row.value as string });
+              }
+              stmt.free();
 
               const projectRoot = rows.find((r) => r.key === 'project_root')?.value;
               const indexedAt = rows.find((r) => r.key === 'indexed_at')?.value;
@@ -74,7 +83,7 @@ export async function listIndexedProjects(): Promise<
             }
           }
         } catch {
-          // Ignore invalid SQLite DBs
+          // Ignore invalid DBs
         }
       }
     }
@@ -95,22 +104,28 @@ export async function getIndexStats(projectPath: string): Promise<{
   indexed_at: number;
 } | null> {
   try {
-    // Check for SQLite index
+    // Check for index
     const indexDir = getIndexDir(projectPath);
     const dbPath = path.join(indexDir, 'index.db');
     const stats = await fs.stat(dbPath);
 
     if (!stats.isFile()) return null;
 
-    const Database = (await import('better-sqlite3')).default;
-    const db = new Database(dbPath, { readonly: true });
+    const SQL = await initSqlJs();
+    const buffer = await fs.readFile(dbPath);
+    const db = new SQL.Database(buffer);
 
     try {
-      const rows = db
-        .prepare(
-          "SELECT key, value FROM metadata WHERE key IN ('total_files', 'total_symbols', 'indexed_at')",
-        )
-        .all() as Array<{ key: string; value: string }>;
+      const stmt = db.prepare(
+        "SELECT key, value FROM metadata WHERE key IN ('total_files', 'total_symbols', 'indexed_at')",
+      );
+
+      const rows: Array<{ key: string; value: string }> = [];
+      while (stmt.step()) {
+        const row = stmt.getAsObject();
+        rows.push({ key: row.key as string, value: row.value as string });
+      }
+      stmt.free();
 
       const totalFiles = rows.find((r) => r.key === 'total_files')?.value;
       const totalSymbols = rows.find((r) => r.key === 'total_symbols')?.value;

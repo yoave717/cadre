@@ -4,7 +4,7 @@ async function runBenchmark() {
   const projectRoot = process.cwd();
   console.log(`Benchmarking indexing for: ${projectRoot}`);
 
-  const manager = new IndexManager(projectRoot, { useSqlite: true });
+  const manager = new IndexManager(projectRoot);
 
   console.log('Starting buildIndex...');
   const start = Date.now();
