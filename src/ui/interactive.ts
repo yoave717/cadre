@@ -10,6 +10,7 @@ import { saveConversation } from '../commands/save.js';
 import { loadConversation, listConversations } from '../commands/load.js';
 import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
 import { TaskCoordinator } from '../workers/index.js';
+import { getMCPClientManager, getMCPServers } from '../mcp/index.js';
 import {
   theme,
   formatSuccess,
@@ -216,6 +217,47 @@ export const startInteractiveSession = async (
 
   const agent = new Agent(systemPrompt);
 
+  // Initialize MCP connections
+  const mcpServers = getMCPServers();
+  const enabledServers = mcpServers.filter((s) => s.enabled);
+
+  if (enabledServers.length > 0) {
+    const mcpManager = getMCPClientManager();
+
+    // Add all configured servers to the manager
+    for (const server of mcpServers) {
+      mcpManager.addServer(server);
+    }
+
+    // Attempt to connect to all enabled servers
+    const mcpSpinner = ora('Connecting to MCP servers...').start();
+    try {
+      await mcpManager.connectAll();
+
+      const connections = mcpManager.getConnectionStatus();
+      const connected = connections.filter((c) => c.connected);
+      const totalTools = connected.reduce((sum, c) => sum + c.tools.length, 0);
+
+      if (connected.length > 0) {
+        mcpSpinner.succeed(
+          `Connected to ${connected.length} MCP server(s) with ${totalTools} external tool(s)`,
+        );
+
+        // Show connected servers in dim text
+        for (const conn of connected) {
+          console.log(
+            theme.dim(`  ● ${conn.config.name} (${conn.tools.length} tools available)`),
+          );
+        }
+      } else {
+        mcpSpinner.warn('No MCP servers connected');
+      }
+    } catch (error) {
+      mcpSpinner.fail(`MCP connection error: ${(error as Error).message}`);
+    }
+    console.log('');
+  }
+
   // Initialize multi-worker coordinator
   const coordinator = new TaskCoordinator({
     maxWorkers: 4, // Configure based on system resources
@@ -366,10 +408,13 @@ export const startInteractiveSession = async (
       const abortController = new AbortController();
 
       // Setup SIGINT handler for agent execution
-      const onSigInt = () => {
+      const onSigInt = async () => {
         const now = Date.now();
         if (now - lastSigIntTime < 1000) {
           console.log('\nGoodbye!');
+          // Cleanup MCP connections
+          const mcpManager = getMCPClientManager();
+          await mcpManager.disconnectAll();
           process.exit(0);
         }
         lastSigIntTime = now;
@@ -425,6 +470,9 @@ export const startInteractiveSession = async (
         const now = Date.now();
         if (now - lastSigIntTime < 1000) {
           console.log('\nGoodbye!');
+          // Cleanup MCP connections
+          const mcpManager = getMCPClientManager();
+          await mcpManager.disconnectAll();
           process.exit(0);
         }
         lastSigIntTime = now;

@@ -12,6 +12,17 @@ import {
   clearProjectIndex,
   getIndexStats,
 } from './index-system/index.js';
+import {
+  getMCPServers,
+  setMCPServer,
+  removeMCPServer,
+  toggleMCPServer,
+  clearMCPServers,
+  validateMCPServerConfig,
+  getExampleMCPServers,
+} from './mcp/index.js';
+import { getMCPClientManager } from './mcp/index.js';
+import type { MCPServerConfig } from './mcp/index.js';
 
 const program = new Command();
 
@@ -360,6 +371,240 @@ program
     } catch (error) {
       const err = error as Error;
       console.error(chalk.red(`Error managing index: ${err.message}`));
+    }
+  });
+
+// MCP command
+program
+  .command('mcp')
+  .description('Manage MCP (Model Context Protocol) server connections')
+  .argument('<action>', 'Action: list, add, remove, enable, disable, test, clear, examples')
+  .argument('[name]', 'Server name (for add, remove, enable, disable, test)')
+  .option('--command <cmd>', 'Server command (for add with stdio)')
+  .option('--args <args...>', 'Server command arguments (for add with stdio)')
+  .option('--url <url>', 'Server URL (for add with SSE)')
+  .option('--transport <type>', 'Transport type: stdio or sse (default: stdio)')
+  .option('--env <vars...>', 'Environment variables in KEY=VALUE format')
+  .action(async (action, name, options) => {
+    try {
+      if (action === 'list') {
+        // List all servers
+        const servers = getMCPServers();
+        if (servers.length === 0) {
+          console.log(chalk.yellow('No MCP servers configured.'));
+          console.log(chalk.dim('Use "cadre mcp add <name>" to add a server.'));
+          console.log(chalk.dim('Use "cadre mcp examples" to see example configurations.'));
+          return;
+        }
+
+        console.log(chalk.bold('\nConfigured MCP Servers:\n'));
+        for (const server of servers) {
+          const status = server.enabled ? chalk.green('✓ enabled') : chalk.dim('✗ disabled');
+          console.log(`${chalk.bold(server.name)} [${server.transport}] ${status}`);
+
+          if (server.command) {
+            console.log(chalk.dim(`  Command: ${server.command} ${(server.args || []).join(' ')}`));
+          }
+          if (server.url) {
+            console.log(chalk.dim(`  URL: ${server.url}`));
+          }
+          if (server.env && Object.keys(server.env).length > 0) {
+            console.log(chalk.dim(`  Environment: ${Object.keys(server.env).join(', ')}`));
+          }
+          console.log('');
+        }
+
+        // Show connection status
+        const manager = getMCPClientManager();
+        const connections = manager.getConnectionStatus();
+        const connected = connections.filter((c) => c.connected);
+
+        if (connected.length > 0) {
+          console.log(chalk.bold('Currently Connected:\n'));
+          for (const conn of connected) {
+            console.log(
+              `${chalk.green('●')} ${chalk.bold(conn.config.name)} - ${conn.tools.length} tools available`,
+            );
+          }
+        }
+      } else if (action === 'add') {
+        if (!name) {
+          console.log(chalk.red('Error: Server name is required'));
+          console.log(chalk.dim('Usage: cadre mcp add <name> [options]'));
+          return;
+        }
+
+        // Parse environment variables
+        const env: Record<string, string> = {};
+        if (options.env) {
+          for (const envVar of options.env) {
+            const [key, ...valueParts] = envVar.split('=');
+            if (key && valueParts.length > 0) {
+              env[key] = valueParts.join('=');
+            }
+          }
+        }
+
+        const transport = (options.transport || 'stdio') as 'stdio' | 'sse';
+        const config: MCPServerConfig = {
+          name,
+          transport,
+          enabled: true,
+        };
+
+        if (transport === 'stdio') {
+          if (!options.command) {
+            console.log(chalk.red('Error: --command is required for stdio transport'));
+            return;
+          }
+          config.command = options.command;
+          config.args = options.args || [];
+        } else if (transport === 'sse') {
+          if (!options.url) {
+            console.log(chalk.red('Error: --url is required for SSE transport'));
+            return;
+          }
+          config.url = options.url;
+        }
+
+        if (Object.keys(env).length > 0) {
+          config.env = env;
+        }
+
+        // Validate configuration
+        const validation = validateMCPServerConfig(config);
+        if (!validation.valid) {
+          console.log(chalk.red('Error: Invalid configuration'));
+          for (const error of validation.errors) {
+            console.log(chalk.red(`  - ${error}`));
+          }
+          return;
+        }
+
+        setMCPServer(config);
+        console.log(chalk.green(`✓ MCP server "${name}" added successfully`));
+      } else if (action === 'remove') {
+        if (!name) {
+          console.log(chalk.red('Error: Server name is required'));
+          return;
+        }
+
+        const removed = removeMCPServer(name);
+        if (removed) {
+          // Also disconnect if connected
+          const manager = getMCPClientManager();
+          await manager.disconnect(name);
+          console.log(chalk.green(`✓ MCP server "${name}" removed`));
+        } else {
+          console.log(chalk.yellow(`Server "${name}" not found`));
+        }
+      } else if (action === 'enable') {
+        if (!name) {
+          console.log(chalk.red('Error: Server name is required'));
+          return;
+        }
+
+        const success = toggleMCPServer(name, true);
+        if (success) {
+          console.log(chalk.green(`✓ MCP server "${name}" enabled`));
+        } else {
+          console.log(chalk.yellow(`Server "${name}" not found`));
+        }
+      } else if (action === 'disable') {
+        if (!name) {
+          console.log(chalk.red('Error: Server name is required'));
+          return;
+        }
+
+        const success = toggleMCPServer(name, false);
+        if (success) {
+          // Also disconnect if connected
+          const manager = getMCPClientManager();
+          await manager.disconnect(name);
+          console.log(chalk.green(`✓ MCP server "${name}" disabled`));
+        } else {
+          console.log(chalk.yellow(`Server "${name}" not found`));
+        }
+      } else if (action === 'test') {
+        if (!name) {
+          console.log(chalk.red('Error: Server name is required'));
+          return;
+        }
+
+        console.log(chalk.blue(`Testing connection to "${name}"...`));
+        const manager = getMCPClientManager();
+
+        // Add server to manager
+        const server = getMCPServers().find((s) => s.name === name);
+        if (!server) {
+          console.log(chalk.red(`Server "${name}" not found`));
+          return;
+        }
+
+        manager.addServer(server);
+
+        try {
+          await manager.connect(name);
+          const tools = manager.getToolsFromServer(name);
+
+          console.log(chalk.green(`✓ Connected successfully!`));
+          console.log(chalk.bold(`\nAvailable tools (${tools.length}):\n`));
+
+          for (const tool of tools) {
+            console.log(`  ${chalk.bold(tool.name)}`);
+            if (tool.description) {
+              console.log(chalk.dim(`    ${tool.description}`));
+            }
+          }
+
+          await manager.disconnect(name);
+        } catch (error) {
+          console.log(chalk.red(`✗ Connection failed: ${(error as Error).message}`));
+        }
+      } else if (action === 'clear') {
+        clearMCPServers();
+        console.log(chalk.green('✓ All MCP servers cleared'));
+      } else if (action === 'examples') {
+        const examples = getExampleMCPServers();
+
+        console.log(chalk.bold('\nExample MCP Server Configurations:\n'));
+        console.log(
+          chalk.dim(
+            'These are examples of common MCP servers. Add them with your own configuration.\n',
+          ),
+        );
+
+        for (const example of examples) {
+          console.log(chalk.bold(example.name));
+          console.log(chalk.dim(`  Transport: ${example.transport}`));
+
+          if (example.command) {
+            const cmd = `cadre mcp add ${example.name} --command "${example.command}"`;
+            const args = example.args ? ` --args ${example.args.join(' ')}` : '';
+            const env = example.env
+              ? ` --env ${Object.entries(example.env)
+                  .map(([k, v]) => `${k}=${v}`)
+                  .join(' ')}`
+              : '';
+
+            console.log(chalk.cyan(`  ${cmd}${args}${env}`));
+          } else if (example.url) {
+            console.log(
+              chalk.cyan(
+                `  cadre mcp add ${example.name} --transport sse --url "${example.url}"`,
+              ),
+            );
+          }
+          console.log('');
+        }
+      } else {
+        console.log(
+          chalk.yellow('Usage: cadre mcp [list|add|remove|enable|disable|test|clear|examples]'),
+        );
+      }
+    } catch (error) {
+      const err = error as Error;
+      console.error(chalk.red(`Error managing MCP servers: ${err.message}`));
     }
   });
 

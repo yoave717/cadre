@@ -1,7 +1,7 @@
 import { ChatCompletionMessageParam } from 'openai/resources';
 import { getClient } from '../client.js';
 import { getConfig } from '../config.js';
-import { TOOLS, handleToolCall } from './tools.js';
+import { getAllTools, handleToolCall } from './tools.js';
 import { ContextManager, getContextManager, estimateConversationTokens } from '../context/index.js';
 import { RateLimiter } from '../utils/rate-limiter.js';
 import { estimateTokens } from '../context/tokenizer.js';
@@ -158,7 +158,7 @@ Guidelines:
             messages: history.map(
               ({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam,
             ),
-            tools: TOOLS,
+            tools: getAllTools(),
             tool_choice: 'auto',
             stream: true,
             stream_options: { include_usage: true },

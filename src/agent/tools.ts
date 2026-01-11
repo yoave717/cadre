@@ -8,6 +8,7 @@ import * as indexTools from '../tools/index.js';
 import * as gitTools from '../tools/git.js';
 import * as gitflowTools from '../tools/gitflow.js';
 import * as prTools from '../tools/pr.js';
+import { getMCPClientManager } from '../mcp/index.js';
 
 export const TOOLS: ChatCompletionTool[] = [
   // File operations
@@ -729,11 +730,47 @@ export const TOOLS: ChatCompletionTool[] = [
   },
 ];
 
+/**
+ * Get all available tools, including both built-in tools and MCP tools
+ */
+export function getAllTools(): ChatCompletionTool[] {
+  const mcpManager = getMCPClientManager();
+  const mcpTools = mcpManager.convertToOpenAITools();
+  return [...TOOLS, ...mcpTools];
+}
+
 export const handleToolCall = async (
   name: string,
   args: any,
   executionContext?: string,
 ): Promise<string> => {
+  // Check if this is an MCP tool call
+  const mcpManager = getMCPClientManager();
+  const mcpToolInfo = mcpManager.parseMCPToolName(name);
+
+  if (mcpToolInfo) {
+    const { serverName, toolName } = mcpToolInfo;
+    const result = await mcpManager.callTool(serverName, toolName, args);
+
+    if (!result.success) {
+      return `MCP Tool Error: ${result.error || 'Unknown error'}`;
+    }
+
+    // Convert content array to string
+    return result.content
+      .map((item) => {
+        if (item.type === 'text') {
+          return item.text || '';
+        } else if (item.type === 'image') {
+          return `[Image: ${item.mimeType || 'unknown'}]`;
+        } else if (item.type === 'resource') {
+          return `[Resource: ${item.mimeType || 'unknown'}]`;
+        }
+        return '';
+      })
+      .join('\n');
+  }
+
   switch (name) {
     // File operations
     case 'list_files':
