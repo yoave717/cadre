@@ -61,7 +61,7 @@ export const TOOLS: ChatCompletionTool[] = [
     function: {
       name: 'write_file',
       description:
-        "Write content to a file. Creates the file if it doesn't exist. IMPORTANT: You must read the file first before overwriting an existing file.",
+        "Write content to a file. Creates the file if it doesn't exist. Read the file first when overwriting existing files.",
       parameters: {
         type: 'object',
         properties: {
@@ -83,7 +83,7 @@ export const TOOLS: ChatCompletionTool[] = [
     function: {
       name: 'edit_file',
       description:
-        'Make surgical edits to a file by replacing specific text. The old_string must be unique in the file. You must read the file first.',
+        'Make surgical edits to a file by replacing specific text. The old_string must be unique in the file. Read the file first when needed.',
       parameters: {
         type: 'object',
         properties: {
@@ -693,18 +693,18 @@ export const TOOLS: ChatCompletionTool[] = [
     function: {
       name: 'create_pull_request',
       description:
-        'Create a pull request (GitHub) or merge request (GitLab). IMPORTANT: Always provide a meaningful summary parameter that explains WHAT problem is being solved, HOW it was solved, and WHY this approach was chosen. The tool will automatically add technical details (commits, file changes) but needs context from you.',
+        'Create a pull request (GitHub) or merge request (GitLab). Provide a summary that explains what problem is being solved and how. Technical details are added automatically.',
       parameters: {
         type: 'object',
         properties: {
           title: {
             type: 'string',
-            description: 'PR/MR title - should be clear and descriptive',
+            description: 'PR/MR title - clear and descriptive',
           },
           summary: {
             type: 'string',
             description:
-              'High-level summary explaining: (1) WHAT problem/feature this addresses, (2) HOW it was implemented, and (3) WHY this approach was chosen. This provides context that commits alone cannot convey. Example: "Adds automatic branch creation to streamline Git workflows. Implemented using a consistent naming pattern to maintain organization. This approach was chosen to reduce manual branch management and integrate seamlessly with existing tools."',
+              'Concise summary explaining what problem/feature this addresses and how it was implemented.',
           },
           body: {
             type: 'string',

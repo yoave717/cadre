@@ -84,6 +84,18 @@ export const clearConfig = () => {
 };
 
 /**
+ * Check if the model/provider requires `max_tokens` instead of `max_completion_tokens`.
+ * Most providers (OpenAI, etc.) use max_completion_tokens.
+ * Anthropic is the main exception that still uses max_tokens.
+ */
+export const usesMaxTokens = (baseUrl?: string): boolean => {
+  if (!baseUrl) return false;
+  const lowerUrl = baseUrl.toLowerCase();
+  // Anthropic API endpoints
+  return lowerUrl.includes('anthropic') || lowerUrl.includes('claude');
+};
+
+/**
  * Check if configuration is valid for making API calls.
  */
 export const isConfigValid = (): { valid: boolean; missing: string[] } => {
