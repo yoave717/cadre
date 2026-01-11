@@ -1,6 +1,6 @@
 import { ChatCompletionMessageParam } from 'openai/resources';
 import { getClient } from '../client.js';
-import { getConfig } from '../config.js';
+import { getConfig, usesMaxTokens } from '../config.js';
 import { TOOLS, handleToolCall } from './tools.js';
 import { ContextManager, getContextManager, estimateConversationTokens } from '../context/index.js';
 import { RateLimiter } from '../utils/rate-limiter.js';
@@ -146,22 +146,28 @@ Guidelines:
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        return await client.chat.completions.create(
-          {
-            model: config.modelName,
-            // Strip timestamps for OpenAI API
-            messages: history.map(
-              ({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam,
-            ),
-            tools: TOOLS,
-            tool_choice: 'auto',
-            stream: true,
-            stream_options: { include_usage: true },
-            temperature: 0.7, // Lower temperature for more focused, less verbose responses
-            max_tokens: config.maxOutputTokens || 4096, // Limit response length
-          },
-          { signal },
-        );
+        // Build completion params - O1 models require max_completion_tokens instead of max_tokens
+        const maxTokensValue = config.maxOutputTokens || 4096;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const completionParams: any = {
+          model: config.modelName,
+          // Strip timestamps for OpenAI API
+          messages: history.map(({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam),
+          tools: TOOLS,
+          tool_choice: 'auto',
+          stream: true,
+          stream_options: { include_usage: true },
+          temperature: 0.7, // Lower temperature for more focused, less verbose responses
+        };
+
+        // Most providers use max_completion_tokens, Anthropic uses max_tokens
+        if (usesMaxTokens(config.openaiBaseUrl)) {
+          completionParams.max_tokens = maxTokensValue;
+        } else {
+          completionParams.max_completion_tokens = maxTokensValue;
+        }
+
+        return await client.chat.completions.create(completionParams, { signal });
       } catch (error) {
         lastError = error as Error;
 

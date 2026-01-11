@@ -145,7 +145,9 @@ export class WorkerStatusRenderer {
         if (worker.subStatus === 'thinking') {
           line += chalk.dim('Thinking...');
         } else if (worker.subStatus === 'tool-use') {
-          line += chalk.yellow(worker.lastTool ? `Using ${worker.lastTool}` : 'Using tool...');
+          const toolName = worker.lastTool || 'tool...';
+          const displayTool = toolName.length > 30 ? toolName.slice(0, 27) + '...' : toolName;
+          line += chalk.yellow(worker.lastTool ? `Using ${displayTool}` : 'Using tool...');
         } else {
           line += chalk.dim('Working...');
         }
@@ -160,9 +162,9 @@ export class WorkerStatusRenderer {
         }
       } else if (worker.status === 'error') {
         line += chalk.red('Error');
-        if (worker.error) {
-          line += ` ${chalk.red(worker.error)}`;
-        }
+        let err = worker.error || '';
+        if (err.length > 50) err = err.slice(0, 47) + '...';
+        line += ` ${chalk.red(err)}`;
       } else if (worker.status === 'stopped') {
         line += chalk.gray('Stopped');
       } else {
@@ -173,7 +175,16 @@ export class WorkerStatusRenderer {
     }
 
     // Join lines and print
-    process.stdout.write(lines.join('\n') + '\n');
-    this.lastLineCount = lines.length;
+    const output = lines.join('\n') + '\n';
+    process.stdout.write(output);
+
+    // Calculate physical lines occupied (handling wrapping)
+    const columns = process.stdout.columns || 80;
+    this.lastLineCount = lines.reduce((acc, line) => {
+      // Strip ANSI codes to get visible length
+      // eslint-disable-next-line no-control-regex
+      const visibleLen = line.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').length;
+      return acc + Math.ceil(Math.max(1, visibleLen) / columns);
+    }, 0);
   }
 }

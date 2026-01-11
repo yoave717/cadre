@@ -13,6 +13,7 @@ vi.mock('../../src/config.js', () => ({
     openaiBaseUrl: 'http://test',
     openaiApiKey: 'test-key',
   }),
+  usesMaxTokens: () => false,
 }));
 
 vi.mock('../../src/context/index.js', () => ({
