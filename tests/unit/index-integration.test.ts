@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { IndexManager } from '../../src/index-system/manager';
-import { SqliteIndexManager } from '../../src/index-system/sqlite-manager';
 import crypto from 'crypto';
 
 describe('IndexManager Integration', () => {
@@ -39,8 +38,8 @@ describe('IndexManager Integration', () => {
     // Casting to any to access private property for cleanup if necessary,
     // but better to just rely on system cleanup or weak refs if implemented.
     // For this test, we can try to close the underlying DB if we can access it.
-    if ((manager as any).sqlite) {
-      (manager as any).sqlite.close();
+    if ((manager as any).db) {
+      (manager as any).db.close();
     }
 
     // Cleanup temp files
@@ -62,7 +61,7 @@ describe('IndexManager Integration', () => {
     }
   });
 
-  it('should build a full index and persist to SQLite', async () => {
+  it('should build a full index and persist to Database', async () => {
     const stats = await manager.buildIndex();
 
     expect(stats.totalFiles).toBe(2);

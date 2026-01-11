@@ -1,22 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { IndexManager } from '../../src/index-system/manager';
 import * as fileIndexer from '../../src/index-system/file-indexer';
-import { SqliteIndexManager } from '../../src/index-system/sqlite-manager';
+import { IndexDatabase } from '../../src/index-system/database-manager';
 import type { FileIndex, IndexStats, SearchResult } from '../../src/index-system/types';
 
-vi.mock('../../src/index-system/sqlite-manager');
+vi.mock('../../src/index-system/database-manager');
 vi.mock('../../src/index-system/file-indexer');
 
 describe('IndexManager', () => {
   const projectRoot = '/project';
   let manager: IndexManager;
-  let mockSqlite: any;
+  let mockDb: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Setup mock SqliteIndexManager instance
-    mockSqlite = {
+    // Setup mock IndexDatabase instance
+    mockDb = {
       hasData: vi.fn(),
       insertBatch: vi.fn(),
       searchSymbols: vi.fn(),
@@ -27,27 +27,26 @@ describe('IndexManager', () => {
       setMetadata: vi.fn(),
       getAllFiles: vi.fn(),
       deleteFile: vi.fn(),
+      init: vi.fn().mockResolvedValue(undefined),
     };
 
-    (SqliteIndexManager as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      () => mockSqlite,
-    );
+    (IndexDatabase as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockDb);
 
     manager = new IndexManager(projectRoot);
   });
 
   describe('load', () => {
-    it('should load existing index from sqlite', async () => {
-      mockSqlite.hasData.mockReturnValue(true);
+    it('should load existing index from database', async () => {
+      mockDb.hasData.mockReturnValue(true);
 
       const result = await manager.load();
 
       expect(result).toBe(true);
-      expect(mockSqlite.hasData).toHaveBeenCalled();
+      expect(mockDb.hasData).toHaveBeenCalled();
     });
 
     it('should return false when no index exists', async () => {
-      mockSqlite.hasData.mockReturnValue(false);
+      mockDb.hasData.mockReturnValue(false);
 
       const result = await manager.load();
 
@@ -56,7 +55,7 @@ describe('IndexManager', () => {
   });
 
   describe('buildIndex', () => {
-    it('should build complete index and insert into sqlite', async () => {
+    it('should build complete index and insert into database', async () => {
       const mockFileIndex: FileIndex = {
         metadata: {
           path: 'src/index.ts',
@@ -95,8 +94,8 @@ describe('IndexManager', () => {
 
       expect(fileIndexer.indexDirectory).toHaveBeenCalled();
       // insertBatch won't be called because our mock indexDirectory doesn't invoke the callback
-      // expect(mockSqlite.insertBatch).toHaveBeenCalled();
-      expect(mockSqlite.setMetadata).toHaveBeenCalled();
+      // expect(mockDb.insertBatch).toHaveBeenCalled();
+      expect(mockDb.setMetadata).toHaveBeenCalled();
     });
   });
 
@@ -118,7 +117,7 @@ describe('IndexManager', () => {
           hash: 'hash3',
         },
       ];
-      mockSqlite.getAllFiles.mockReturnValue(existingFiles);
+      mockDb.getAllFiles.mockReturnValue(existingFiles);
 
       // 2. Setup current files (scanDirectory)
       const currentPaths = [
@@ -147,7 +146,7 @@ describe('IndexManager', () => {
       await manager.updateIndex();
 
       // Verify Deleted Files were removed
-      expect(mockSqlite.deleteFile).toHaveBeenCalledWith('src/deleted.ts');
+      expect(mockDb.deleteFile).toHaveBeenCalledWith('src/deleted.ts');
 
       // Verify filesToIndex list passed to indexFiles
       expect(fileIndexer.indexFiles).toHaveBeenCalledWith(
@@ -167,7 +166,7 @@ describe('IndexManager', () => {
   });
 
   describe('searchSymbols', () => {
-    it('should delegate to sqlite', () => {
+    it('should delegate to database', () => {
       const mockResult: SearchResult[] = [
         {
           path: 'test.ts',
@@ -176,53 +175,53 @@ describe('IndexManager', () => {
           symbol: { name: 'test', type: 'function', line: 1 },
         },
       ];
-      mockSqlite.searchSymbols.mockReturnValue(mockResult);
+      mockDb.searchSymbols.mockReturnValue(mockResult);
 
       const result = manager.searchSymbols('test');
 
       expect(result).toBe(mockResult);
-      expect(mockSqlite.searchSymbols).toHaveBeenCalledWith('test', 50);
+      expect(mockDb.searchSymbols).toHaveBeenCalledWith('test', 50);
     });
   });
 
   describe('findFiles', () => {
-    it('should delegate to sqlite', () => {
+    it('should delegate to database', () => {
       const mockResult = ['test.ts'];
-      mockSqlite.findFiles.mockReturnValue(mockResult);
+      mockDb.findFiles.mockReturnValue(mockResult);
 
       const result = manager.findFiles('test');
 
       expect(result).toBe(mockResult);
-      expect(mockSqlite.findFiles).toHaveBeenCalledWith('test', 100);
+      expect(mockDb.findFiles).toHaveBeenCalledWith('test', 100);
     });
   });
 
   describe('getFileSymbols', () => {
-    it('should delegate to sqlite', () => {
+    it('should delegate to database', () => {
       const mockResult = [{ name: 'test', type: 'function', line: 1 }];
-      mockSqlite.getFileSymbols.mockReturnValue(mockResult);
+      mockDb.getFileSymbols.mockReturnValue(mockResult);
 
       const result = manager.getFileSymbols('test.ts');
 
       expect(result).toBe(mockResult);
-      expect(mockSqlite.getFileSymbols).toHaveBeenCalledWith('test.ts');
+      expect(mockDb.getFileSymbols).toHaveBeenCalledWith('test.ts');
     });
   });
 
   describe('findImporters', () => {
-    it('should delegate to sqlite', () => {
+    it('should delegate to database', () => {
       const mockResult = ['importer.ts'];
-      mockSqlite.findImporters.mockReturnValue(mockResult);
+      mockDb.findImporters.mockReturnValue(mockResult);
 
       const result = manager.findImporters('module');
 
       expect(result).toBe(mockResult);
-      expect(mockSqlite.findImporters).toHaveBeenCalledWith('module');
+      expect(mockDb.findImporters).toHaveBeenCalledWith('module');
     });
   });
 
   describe('getStats', () => {
-    it('should delegate to sqlite', () => {
+    it('should delegate to database', () => {
       const mockStats: IndexStats = {
         totalFiles: 1,
         totalSymbols: 1,
@@ -231,30 +230,30 @@ describe('IndexManager', () => {
         indexed_at: 123,
         duration: 0,
       };
-      mockSqlite.getStats.mockReturnValue(mockStats);
+      mockDb.getStats.mockReturnValue(mockStats);
 
       const result = manager.getStats();
 
       expect(result).toBe(mockStats);
-      expect(mockSqlite.getStats).toHaveBeenCalled();
+      expect(mockDb.getStats).toHaveBeenCalled();
     });
   });
 
   describe('isLoaded', () => {
-    it('should return true if sqlite has data', async () => {
-      mockSqlite.hasData.mockReturnValue(true);
+    it('should return true if database has data', async () => {
+      mockDb.hasData.mockReturnValue(true);
 
-      // manager.load() delegates to sqlite.hasData()
+      // manager.load() delegates to db.hasData()
       const result = await manager.load();
       expect(result).toBe(true);
 
-      // manager.isLoaded() also delegates to sqlite.hasData()
+      // manager.isLoaded() also delegates to db.hasData()
       expect(manager.isLoaded()).toBe(true);
-      expect(mockSqlite.hasData).toHaveBeenCalled();
+      expect(mockDb.hasData).toHaveBeenCalled();
     });
 
-    it('should return false if sqlite has no data', () => {
-      mockSqlite.hasData.mockReturnValue(false);
+    it('should return false if database has no data', () => {
+      mockDb.hasData.mockReturnValue(false);
       expect(manager.isLoaded()).toBe(false);
     });
   });
