@@ -18,22 +18,23 @@ import {
   countFiles,
   DEFAULT_INDEXING_LIMITS,
 } from './file-indexer.js';
-import { SqliteIndexManager } from './sqlite-manager.js';
+import { IndexDatabase } from './database-manager.js';
 
 export class IndexManager {
   private projectRoot: string;
-  private sqlite: SqliteIndexManager;
+  private db: IndexDatabase;
 
   constructor(projectRoot: string) {
     this.projectRoot = path.resolve(projectRoot);
-    this.sqlite = new SqliteIndexManager(this.projectRoot);
+    this.db = new IndexDatabase(this.projectRoot);
   }
 
   /**
    * Load existing index from disk
    */
   async load(): Promise<boolean> {
-    return this.sqlite.hasData();
+    await this.db.init();
+    return this.db.hasData();
   }
 
   /**
@@ -43,6 +44,7 @@ export class IndexManager {
     progressCallback?: ProgressCallback,
     limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
   ): Promise<IndexStats> {
+    await this.db.init();
     const startTime = Date.now();
     const warnings: IndexingWarning[] = [];
 
@@ -70,7 +72,7 @@ export class IndexManager {
     // Index all files with progress tracking
     const progressState = { current: 0, total: totalFiles };
 
-    // Batch for SQLite insertions
+    // Batch for database insertions
     const batch: Record<string, FileIndex> = {};
     const BATCH_SIZE = 50;
 
@@ -79,9 +81,9 @@ export class IndexManager {
 
       if (Object.keys(batch).length >= BATCH_SIZE) {
         try {
-          this.sqlite.insertBatch(batch);
+          this.db.insertBatch(batch);
         } catch (error) {
-          console.error('Failed to insert batch into SQLite:', error);
+          console.error('Failed to insert batch into Database:', error);
         }
 
         // Clear batch
@@ -105,20 +107,22 @@ export class IndexManager {
     // Flush remaining items in batch
     if (Object.keys(batch).length > 0) {
       try {
-        this.sqlite.insertBatch(batch);
+        this.db.insertBatch(batch);
       } catch (error) {
-        console.error('Failed to insert remaining batch into SQLite:', error);
+        console.error('Failed to insert remaining batch into Database:', error);
       }
     }
 
     // Update metadata
     this.updateMetadata(files);
 
+    const dbStats = this.db.getStats();
+
     return {
       totalFiles: Object.keys(files).length,
-      totalSymbols: 0,
-      totalSize: 0,
-      languages: {},
+      totalSymbols: dbStats?.totalSymbols || 0,
+      totalSize: dbStats?.totalSize || 0,
+      languages: dbStats?.languages || {},
       indexed_at: Date.now(),
       duration: Date.now() - startTime,
       warnings: warnings.length > 0 ? warnings : undefined,
@@ -135,11 +139,11 @@ export class IndexManager {
       const fileIndex = await indexFile(filePath, this.projectRoot);
 
       if (fileIndex) {
-        // Insert specific file into SQLite
+        // Insert specific file into database
         // We wrap it in a record to reuse the batch insert logic
         // Use a transaction for atomic update
         const batch = { [fileIndex.metadata.path]: fileIndex };
-        this.sqlite.insertBatch(batch);
+        this.db.insertBatch(batch);
       }
     } catch (error) {
       console.error(`Failed to index file ${filePath}:`, error);
@@ -154,11 +158,12 @@ export class IndexManager {
     progressCallback?: ProgressCallback,
     limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
   ): Promise<IndexStats> {
+    await this.db.init();
     const startTime = Date.now();
     const warnings: IndexingWarning[] = [];
 
     // Get existing files from DB
-    const existingFiles = this.sqlite.getAllFiles();
+    const existingFiles = this.db.getAllFiles();
     const existingMap = new Map(existingFiles.map((f) => [f.path, f]));
 
     // Scan current files
@@ -205,7 +210,7 @@ export class IndexManager {
 
     // Remove deleted files from DB
     for (const relPath of deletedFiles) {
-      this.sqlite.deleteFile(relPath);
+      this.db.deleteFile(relPath);
     }
 
     // Index changed/new files
@@ -222,7 +227,7 @@ export class IndexManager {
 
     const progressState = { current: 0, total: totalFilesToIndex };
 
-    // Batch for SQLite insertions
+    // Batch for database insertions
     const batch: Record<string, FileIndex> = {};
     const BATCH_SIZE = 50;
 
@@ -230,9 +235,9 @@ export class IndexManager {
       batch[fileIndex.metadata.path] = fileIndex;
       if (Object.keys(batch).length >= BATCH_SIZE) {
         try {
-          this.sqlite.insertBatch(batch);
+          this.db.insertBatch(batch);
         } catch (error) {
-          console.error('Failed to insert batch into SQLite:', error);
+          console.error('Failed to insert batch into Database:', error);
         }
         for (const key in batch) delete batch[key];
       }
@@ -252,28 +257,24 @@ export class IndexManager {
     // Flush remaining items in batch
     if (Object.keys(batch).length > 0) {
       try {
-        this.sqlite.insertBatch(batch);
+        this.db.insertBatch(batch);
       } catch (error) {
-        console.error('Failed to insert remaining batch into SQLite:', error);
+        console.error('Failed to insert remaining batch into Database:', error);
       }
     }
 
-    // Update metadata implies recalculating totals.
-    // getStats() gets it from metadata table, so we must update metadata table.
-    // However, we only have partial file list here.
-    // We need to fetch stats from DB to update metadata?
-    // Actually, `updateMetadata` implementation below assumes `files` is everything.
-    // We should rely on `SqliteIndexManager` to calculate totals if possible, or query DB.
-    // `sqlite.getStats()` queries metadata table.
-    // If we want `total_files` to be correct, we must update it.
-    // Query count from DB.
-
     this.refreshMetadata(); // Implement this
+
+    // Calculate stats for the updated/index files only (delta)
+    let totalSymbols = 0;
+    for (const fileIndex of Object.values(indexedFiles)) {
+      totalSymbols += fileIndex.symbols.length;
+    }
 
     return {
       totalFiles: Object.keys(indexedFiles).length, // Only changed files
-      totalSymbols: 0,
-      totalSize: 0,
+      totalSymbols,
+      totalSize: 0, // Delta size is hard to compute without file size diff, keeping 0 for now as it's less critical
       languages: {},
       indexed_at: Date.now(),
       duration: Date.now() - startTime,
@@ -284,16 +285,16 @@ export class IndexManager {
 
   private updateMetadata(files: Record<string, FileIndex>) {
     try {
-      this.sqlite.setMetadata('project_root', this.projectRoot);
-      this.sqlite.setMetadata('indexed_at', Date.now().toString());
-      this.sqlite.setMetadata('total_files', Object.keys(files).length.toString());
+      this.db.setMetadata('project_root', this.projectRoot);
+      this.db.setMetadata('indexed_at', Date.now().toString());
+      this.db.setMetadata('total_files', Object.keys(files).length.toString());
 
       let totalSymbols = 0;
       for (const fileIndex of Object.values(files)) {
         totalSymbols += fileIndex.symbols.length;
       }
-      this.sqlite.setMetadata('total_symbols', totalSymbols.toString());
-      this.sqlite.setMetadata('version', '1');
+      this.db.setMetadata('total_symbols', totalSymbols.toString());
+      this.db.setMetadata('version', '1');
     } catch (error) {
       console.error('Failed to update metadata:', error);
     }
@@ -301,15 +302,15 @@ export class IndexManager {
 
   private refreshMetadata() {
     // Recalculate totals from DB and update metadata
-    // Assuming SqliteIndexManager doesn't do this automatically.
+    // Assuming IndexDatabase doesn't do this automatically.
     try {
-      this.sqlite.setMetadata('indexed_at', Date.now().toString());
+      this.db.setMetadata('indexed_at', Date.now().toString());
 
       // Query actual counts
-      const stats = this.sqlite.getStats(); // Currently reads FROM metadata.
+      const stats = this.db.getStats(); // Currently reads FROM metadata.
       // We need to query TABLES.
       // But I cannot query tables easily from here without exposing query method.
-      // I should add `refreshStats()` to SqliteIndexManager.
+      // I should add `refreshStats()` to IndexDatabase.
       // For now, I'll skip accurate stats update or rely on getStats returning cached values?
       // getStats only reads metadata.
 
@@ -324,65 +325,65 @@ export class IndexManager {
    * Search for symbols by name
    */
   searchSymbols(query: string, limit: number = 50): SearchResult[] {
-    return this.sqlite.searchSymbols(query, limit);
+    return this.db.searchSymbols(query, limit);
   }
 
   /**
    * Find files by path pattern
    */
   findFiles(pattern: string, limit: number = 100): string[] {
-    return this.sqlite.findFiles(pattern, limit);
+    return this.db.findFiles(pattern, limit);
   }
 
   /**
    * Find files by glob pattern
    */
   globFiles(pattern: string, limit: number = 1000): string[] {
-    return this.sqlite.globFiles(pattern, limit);
+    return this.db.globFiles(pattern, limit);
   }
 
   /**
    * Find files by name (exact or suffix)
    */
   findFilesByName(filename: string, limit: number = 10): string[] {
-    return this.sqlite.findFilesByName(filename, limit);
+    return this.db.findFilesByName(filename, limit);
   }
 
   /**
    * Get all symbols in a file
    */
   getFileSymbols(filePath: string): Symbol[] {
-    return this.sqlite.getFileSymbols(filePath);
+    return this.db.getFileSymbols(filePath);
   }
 
   /**
    * Find files that import a specific module
    */
   findImporters(moduleName: string): string[] {
-    return this.sqlite.findImporters(moduleName);
+    return this.db.findImporters(moduleName);
   }
 
   /**
    * Get all file paths
    */
   getAllFilePaths(): string[] {
-    return this.sqlite.getAllPaths();
+    return this.db.getAllPaths();
   }
 
   /**
    * Get index statistics
    */
   getStats(): IndexStats | null {
-    return this.sqlite.getStats();
+    return this.db.getStats();
   }
 
   /**
    * Check if index exists and is loaded
    */
   isLoaded(): boolean {
-    if (this.sqlite) {
+    if (this.db) {
       try {
-        return this.sqlite.hasData();
+        return this.db.hasData();
       } catch {
         return false;
       }
