@@ -301,3 +301,11 @@ export function getMCPClientManager(): MCPClientManager {
   }
   return instance;
 }
+
+/**
+ * Reset the singleton instance for testing purposes
+ * @internal
+ */
+export function resetMCPClientManagerForTesting(): void {
+  instance = null;
+}
