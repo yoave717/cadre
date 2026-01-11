@@ -151,6 +151,21 @@ Remember: Other workers are handling other tasks in parallel. Don't worry about 
         switch (event.type) {
           case 'text_delta':
             fullResponse += event.content;
+            // Emit thinking status occasionally or on first delta?
+            // To avoid flooding, maybe we don't emit on every delta, but the renderer handles high frequency updates fine?
+            // Actually, let's just emit "thinking" if we haven't recently or if state changed.
+            // But for simplicity, let's emit on first delta or rely on the fact that if no tool is running, it's thinking.
+
+            // Let's explicitly emit a "thinking" progress if we aren't already.
+            // But wait, the previous code didn't track "thinking".
+            if (!toolCallCount && fullResponse.length === event.content.length) {
+              this.emitWorkerMessage({
+                type: 'task-progress',
+                workerId: worker.id,
+                taskId: task.id,
+                data: { status: 'thinking' },
+              });
+            }
             break;
           case 'text_done':
             fullResponse = event.content;
@@ -161,7 +176,16 @@ Remember: Other workers are handling other tasks in parallel. Don't worry about 
               type: 'task-progress',
               workerId: worker.id,
               taskId: task.id,
-              data: { tool: event.name, args: event.args },
+              data: { status: 'tool-use', tool: event.name, args: event.args },
+            });
+            break;
+          case 'tool_result':
+            // After tool result, we go back to thinking
+            this.emitWorkerMessage({
+              type: 'task-progress',
+              workerId: worker.id,
+              taskId: task.id,
+              data: { status: 'thinking' },
             });
             break;
           case 'error':

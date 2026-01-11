@@ -12,6 +12,7 @@ vi.mock('../../src/config.js', () => ({
     modelName: 'test-model',
     openaiBaseUrl: 'http://localhost',
   }),
+  usesMaxTokens: () => false,
 }));
 
 vi.mock('../../src/context/index.js', () => ({

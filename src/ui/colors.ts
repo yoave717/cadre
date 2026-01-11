@@ -3,7 +3,7 @@
  * A warm, pastel color palette for a friendly co-partner CLI experience
  */
 
-import chalk from 'chalk';
+import chalk, { Chalk } from 'chalk';
 
 // Core brand colors - warm pastels
 export const colors = {
@@ -158,7 +158,7 @@ export function formatTimestamp(date: Date): string {
 /**
  * Format role-specific text (user vs assistant)
  */
-export function formatRole(role: 'user' | 'assistant' | 'system'): chalk.Chalk {
+export function formatRole(role: 'user' | 'assistant' | 'system'): InstanceType<typeof Chalk> {
   switch (role) {
     case 'user':
       return theme.userInput;
@@ -175,8 +175,8 @@ export function formatRole(role: 'user' | 'assistant' | 'system'): chalk.Chalk {
 export function formatSymbolType(
   type: string,
   exported: boolean = false,
-): { color: chalk.Chalk; exportedColor: chalk.Chalk } {
-  let color: chalk.Chalk;
+): { color: InstanceType<typeof Chalk>; exportedColor: InstanceType<typeof Chalk> } {
+  let color: InstanceType<typeof Chalk>;
 
   switch (type) {
     case 'function':

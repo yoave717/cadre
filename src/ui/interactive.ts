@@ -9,6 +9,10 @@ import { Agent, HistoryItem } from '../agent/index.js';
 import { saveConversation } from '../commands/save.js';
 import { loadConversation, listConversations } from '../commands/load.js';
 import { MultiLineHandler, getModePrompt } from '../input/multiline.js';
+import { WorkerStatusRenderer } from './worker-renderer.js';
+import { getConfig } from '../config.js';
+import { BranchManager } from '../context/branch-manager.js';
+import { SessionManager } from '../context/session-manager.js';
 import { TaskCoordinator } from '../workers/index.js';
 import {
   theme,
@@ -45,44 +49,60 @@ function displayBanner(): void {
 `;
   console.log(banner);
 }
-import { getConfig } from '../config.js';
-import { BranchManager } from '../context/branch-manager.js';
-import { SessionManager } from '../context/session-manager.js';
 
 // Configure marked for terminal rendering
 marked.setOptions({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   renderer: new TerminalRenderer() as any,
 });
-
-/**
- * Process a prompt using multi-worker execution
- */
 async function processWithMultiWorker(
   prompt: string,
   coordinator: TaskCoordinator,
 ): Promise<string> {
-  const summary = await coordinator.execute(prompt);
+  const renderer = new WorkerStatusRenderer();
 
-  // Display the summary
-  console.log(coordinator.formatSummary(summary));
+  // Configure coordinator for interactive display
+  coordinator.setVerbose(false);
+  coordinator.setWorkerMessageHandler((msg) => renderer.update(msg));
+  coordinator.setOnProgress((message) => {
+    renderer.clear();
+    console.log(message);
+    // Renderer will redraw on next tick/interval
+  });
 
-  // Aggregate results
-  const successfulResults = summary.results.filter((r) => r.success && r.result);
-  if (successfulResults.length > 0) {
-    console.log(theme.emphasis('\n📝 Aggregated Results:\n'));
-    for (const result of successfulResults) {
-      const task = summary.plan.subtasks.find((t) => t.id === result.taskId);
-      if (task) {
-        console.log(theme.info(`Task: ${task.description}`));
-        console.log(result.result);
-        console.log(theme.dim('---\n'));
+  renderer.start();
+
+  try {
+    const summary = await coordinator.execute(prompt);
+
+    // Stop renderer and clear its dynamic lines
+    renderer.stop();
+
+    // Display the summary
+    console.log(coordinator.formatSummary(summary));
+
+    // Aggregate results
+    const successfulResults = summary.results.filter((r) => r.success && r.result);
+    if (successfulResults.length > 0) {
+      console.log(theme.emphasis('\n📝 Aggregated Results:\n'));
+      for (const result of successfulResults) {
+        const task = summary.plan.subtasks.find((t) => t.id === result.taskId);
+        if (task) {
+          console.log(theme.info(`Task: ${task.description}`));
+          console.log(result.result);
+          console.log(theme.dim('---\n'));
+        }
       }
     }
-  }
 
-  // Return combined results
-  return successfulResults.map((r) => r.result).join('\n\n');
+    // Return combined results
+    return successfulResults.map((r) => r.result).join('\n\n');
+  } finally {
+    // Restore coordinator configuration
+    coordinator.setVerbose(true);
+    coordinator.setWorkerMessageHandler(undefined);
+    coordinator.setOnProgress((message) => console.log(message));
+  }
 }
 
 /**
@@ -349,17 +369,16 @@ export const startInteractiveSession = async (
       if (!trimmed) continue;
 
       // Check if this request would benefit from parallel execution
-      const shouldUseParallel = await coordinator.shouldUseMultiWorker(result.content);
+      // Skip check for simple/short requests to reduce overhead
       let useParallelMode = false;
+      const isLikelyComplex =
+        result.content.length > 150 || (result.content.match(/,/g) || []).length >= 2;
 
-      if (shouldUseParallel) {
-        // Ask user if they want to use parallel mode
-        const answer = await lineEditor.read(
-          theme.warning(
-            '💡 This task might benefit from parallel execution. Use multi-worker mode? (y/n): ',
-          ),
-        );
-        useParallelMode = answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes';
+      if (isLikelyComplex) {
+        useParallelMode = await coordinator.shouldUseMultiWorker(result.content);
+        if (useParallelMode) {
+          console.log(chalk.cyan('💡 Using multi-worker mode for parallel execution'));
+        }
       }
 
       // Create a fresh abort controller for this turn

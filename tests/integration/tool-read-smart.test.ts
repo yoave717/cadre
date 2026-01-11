@@ -39,7 +39,7 @@ async function runTest() {
 
     // Build index
     console.log('Building index...');
-    await indexTools.buildIndex(testDir);
+    await indexTools.buildIndex();
 
     // Case 1: Unique resolution
     console.log('\n--- Case 1: Unique Resolution ---');

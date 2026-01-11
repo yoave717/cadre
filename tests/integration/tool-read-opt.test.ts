@@ -46,7 +46,7 @@ async function runTest() {
 
     // Case 2: Build index
     console.log('\n--- Building Index ---');
-    await indexTools.buildIndex(testDir);
+    await indexTools.buildIndex();
     console.log('Index built.');
 
     // Helper to spy on index usage isn't easy in integration test without mocking.
@@ -80,7 +80,7 @@ async function runTest() {
 
     // Now update index
     console.log('\n--- Updating Index ---');
-    await indexTools.updateIndex(testDir);
+    await indexTools.updateIndex();
 
     const res3 = await globTools.globFiles('**/*.ts');
     console.log('Updated Index Results:\n', res3);

@@ -1,5 +1,5 @@
 import { getClient } from '../client.js';
-import { getConfig } from '../config.js';
+import { getConfig, usesMaxTokens } from '../config.js';
 import { estimateTokens } from './tokenizer.js';
 
 // Generic message type for compatibility
@@ -71,12 +71,21 @@ ${conversationText}
 Summary:`;
 
   try {
-    const response = await client.chat.completions.create({
+    // Build params - O1 models require max_completion_tokens instead of max_tokens
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const params: any = {
       model: config.modelName,
       messages: [{ role: 'user', content: summaryPrompt }],
-      max_tokens: maxSummaryTokens,
       temperature: 0.3, // Lower temperature for more factual summary
-    });
+    };
+
+    if (usesMaxTokens(config.openaiBaseUrl)) {
+      params.max_tokens = maxSummaryTokens;
+    } else {
+      params.max_completion_tokens = maxSummaryTokens;
+    }
+
+    const response = await client.chat.completions.create(params);
 
     return response.choices[0]?.message?.content || 'Unable to generate summary.';
   } catch {
@@ -176,12 +185,21 @@ ${newContent}
 Updated summary:`;
 
   try {
-    const response = await client.chat.completions.create({
+    // Build params - O1 models require max_completion_tokens instead of max_tokens
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const params: any = {
       model: config.modelName,
       messages: [{ role: 'user', content: updatePrompt }],
-      max_tokens: maxSummaryTokens,
       temperature: 0.3,
-    });
+    };
+
+    if (usesMaxTokens(config.openaiBaseUrl)) {
+      params.max_tokens = maxSummaryTokens;
+    } else {
+      params.max_completion_tokens = maxSummaryTokens;
+    }
+
+    const response = await client.chat.completions.create(params);
 
     return response.choices[0]?.message?.content || existingSummary;
   } catch {

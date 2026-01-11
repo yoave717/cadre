@@ -9,4 +9,5 @@ export {
 
 export { summarizeConversation, summarizeToolResult, updateRollingSummary } from './summarizer.js';
 
-export { ContextConfig, ContextManager, getContextManager } from './manager.js';
+export type { ContextConfig } from './manager.js';
+export { ContextManager, getContextManager } from './manager.js';
