@@ -22,18 +22,25 @@ function getIndexManager(dir: string = process.cwd()): IndexManager {
 }
 
 /**
- * Update index for a single file (used by other tools)
+ * Update index for a single file (used by other tools).
+ * This function is designed to work silently behind-the-scenes -
+ * any errors are logged but not thrown to avoid disrupting main operations.
  */
 export async function updateFileIndex(filePath: string): Promise<void> {
-  const absolutePath = path.resolve(filePath);
-  const projectRoot = process.cwd(); // Assume CWD is project root for now
+  try {
+    const absolutePath = path.resolve(filePath);
+    const projectRoot = process.cwd(); // Assume CWD is project root for now
 
-  // Only update if we have an active manager or if we want to be proactive
-  const manager = getIndexManager(projectRoot);
+    // Only update if we have an active manager or if we want to be proactive
+    const manager = getIndexManager(projectRoot);
 
-  // Always attempt to index the file.
-  // The IndexManager is initialized (DB created), so we should use it.
-  await manager.indexFile(absolutePath);
+    // Attempt to index the file - will silently skip if DB not initialized
+    await manager.indexFile(absolutePath);
+  } catch (error) {
+    // Log but don't throw - indexing is a background operation
+    // and should never break the main tool operations
+    console.error(`Background indexing failed for ${filePath}:`, error);
+  }
 }
 
 /**

@@ -23,6 +23,8 @@ import { IndexDatabase } from './database-manager.js';
 export class IndexManager {
   private projectRoot: string;
   private db: IndexDatabase;
+  private initPromise: Promise<void> | null = null;
+  private initError: Error | null = null;
 
   constructor(projectRoot: string) {
     this.projectRoot = path.resolve(projectRoot);
@@ -30,10 +32,35 @@ export class IndexManager {
   }
 
   /**
+   * Ensure the database is initialized.
+   * Safe to call multiple times - will only initialize once.
+   * Returns true if initialized successfully, false otherwise.
+   */
+  private async ensureInitialized(): Promise<boolean> {
+    // Return cached error state
+    if (this.initError) return false;
+
+    // Already initialized
+    if (this.db.isInitialized()) return true;
+
+    // Initialize if not already in progress
+    if (!this.initPromise) {
+      this.initPromise = this.db.init().catch((error) => {
+        this.initError = error;
+        console.error('Failed to initialize index database:', error);
+      });
+    }
+
+    await this.initPromise;
+    return this.db.isInitialized();
+  }
+
+  /**
    * Load existing index from disk
    */
   async load(): Promise<boolean> {
-    await this.db.init();
+    const initialized = await this.ensureInitialized();
+    if (!initialized) return false;
     return this.db.hasData();
   }
 
@@ -44,7 +71,10 @@ export class IndexManager {
     progressCallback?: ProgressCallback,
     limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
   ): Promise<IndexStats> {
-    await this.db.init();
+    const initialized = await this.ensureInitialized();
+    if (!initialized) {
+      throw new Error('Failed to initialize index database');
+    }
     const startTime = Date.now();
     const warnings: IndexingWarning[] = [];
 
@@ -131,10 +161,20 @@ export class IndexManager {
   }
 
   /**
-   * Index a single file and update the database
+   * Index a single file and update the database.
+   * This is safe to call even if the database is not initialized -
+   * it will silently skip indexing in that case.
    */
   async indexFile(filePath: string): Promise<void> {
     try {
+      // Ensure database is initialized before attempting to index
+      const initialized = await this.ensureInitialized();
+      if (!initialized) {
+        // Database not available - silently skip indexing
+        // This is expected when index hasn't been built yet
+        return;
+      }
+
       // Index the file (this processes content, extracts symbols, etc.)
       const fileIndex = await indexFile(filePath, this.projectRoot);
 
@@ -146,8 +186,9 @@ export class IndexManager {
         this.db.insertBatch(batch);
       }
     } catch (error) {
+      // Log but don't throw - indexing errors shouldn't break main operations
+      // This keeps the indexing truly "behind-the-scenes"
       console.error(`Failed to index file ${filePath}:`, error);
-      // We don't throw here to avoid breaking the tool operation that triggered this
     }
   }
 
@@ -158,7 +199,10 @@ export class IndexManager {
     progressCallback?: ProgressCallback,
     limits: IndexingLimits = DEFAULT_INDEXING_LIMITS,
   ): Promise<IndexStats> {
-    await this.db.init();
+    const initialized = await this.ensureInitialized();
+    if (!initialized) {
+      throw new Error('Failed to initialize index database');
+    }
     const startTime = Date.now();
     const warnings: IndexingWarning[] = [];
 
