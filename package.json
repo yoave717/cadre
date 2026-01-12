@@ -1,6 +1,6 @@
 {
-  "name": "cadre",
-  "version": "1.0.0",
+  "name": "@yoavelkayam/cadre",
+  "version": "1.0.1",
   "description": "A powerful agentic CLI tool for local development with vLLM and OpenAI-compatible APIs.",
   "type": "module",
   "files": [
