@@ -37,7 +37,7 @@ export class IndexDatabase {
   }
 
   private initSchema(): void {
-    if (!this.db) throw new Error('Database not initialized');
+    if (!this.db) return; // Safety check - should not happen if called from init()
 
     // FTS5 is not available in standard sql.js build usually, or creates issues.
     // We removed FTS5 usage as per plan.
@@ -114,46 +114,72 @@ export class IndexDatabase {
   }
 
   /**
+   * Check if database is initialized
+   */
+  isInitialized(): boolean {
+    return this.db !== null;
+  }
+
+  /**
    * Set a metadata value
    */
   setMetadata(key: string, value: string): void {
-    if (!this.db) throw new Error('Database not initialized');
-    this.db.run('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [key, value]);
-    this.save();
+    if (!this.db) return; // Silently skip if not initialized
+    try {
+      this.db.run('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)', [key, value]);
+      this.save();
+    } catch (error) {
+      // Log but don't throw - indexing errors shouldn't break main operations
+      console.error('Failed to set metadata:', error);
+    }
   }
 
   /**
    * Get a metadata value
    */
   getMetadata(key: string): string | null {
-    if (!this.db) throw new Error('Database not initialized');
-    const stmt = this.db.prepare('SELECT value FROM metadata WHERE key = ?');
-    stmt.bind([key]);
-    if (stmt.step()) {
-      const row = stmt.getAsObject();
+    if (!this.db) return null; // Return null if not initialized
+    try {
+      const stmt = this.db.prepare('SELECT value FROM metadata WHERE key = ?');
+      stmt.bind([key]);
+      if (stmt.step()) {
+        const row = stmt.getAsObject();
+        stmt.free();
+        return row.value as string;
+      }
       stmt.free();
-      return row.value as string;
+      return null;
+    } catch (error) {
+      // Log but don't throw - indexing errors shouldn't break main operations
+      console.error('Failed to get metadata:', error);
+      return null;
     }
-    stmt.free();
-    return null;
   }
 
   /**
    * Insert a batch of file indexes
+   * @returns true if successful, false otherwise
    */
-  insertBatch(files: Record<string, FileIndex>): void {
-    if (!this.db) throw new Error('Database not initialized');
-
-    // sql.js doesn't support explicit transactions in the same way, but we can wrap in BEGIN/COMMIT
-    this.db.run('BEGIN TRANSACTION');
+  insertBatch(files: Record<string, FileIndex>): boolean {
+    if (!this.db) return false; // Silently skip if not initialized
 
     try {
-      this.insertBatchInternal(files);
-      this.db.run('COMMIT');
-      this.save();
-    } catch (err) {
-      this.db.run('ROLLBACK');
-      throw err;
+      // sql.js doesn't support explicit transactions in the same way, but we can wrap in BEGIN/COMMIT
+      this.db.run('BEGIN TRANSACTION');
+
+      try {
+        this.insertBatchInternal(files);
+        this.db.run('COMMIT');
+        this.save();
+        return true;
+      } catch (err) {
+        this.db.run('ROLLBACK');
+        throw err;
+      }
+    } catch (error) {
+      // Log but don't throw - indexing errors shouldn't break main operations
+      console.error('Failed to insert batch:', error);
+      return false;
     }
   }
 

@@ -28,6 +28,7 @@ describe('IndexManager', () => {
       getAllFiles: vi.fn(),
       deleteFile: vi.fn(),
       init: vi.fn().mockResolvedValue(undefined),
+      isInitialized: vi.fn().mockReturnValue(true),
     };
 
     (IndexDatabase as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockDb);
