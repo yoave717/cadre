@@ -1,7 +1,7 @@
 import { ChatCompletionMessageParam } from 'openai/resources';
 import { getClient } from '../client.js';
+import { getAllTools, handleToolCall } from './tools.js';
 import { getConfig, usesMaxTokens } from '../config.js';
-import { TOOLS, handleToolCall } from './tools.js';
 import { ContextManager, getContextManager, estimateConversationTokens } from '../context/index.js';
 import { RateLimiter } from '../utils/rate-limiter.js';
 
@@ -153,7 +153,7 @@ Guidelines:
           model: config.modelName,
           // Strip timestamps for OpenAI API
           messages: history.map(({ timestamp: _ts, ...msg }) => msg as ChatCompletionMessageParam),
-          tools: TOOLS,
+          tools: getAllTools(),
           tool_choice: 'auto',
           stream: true,
           stream_options: { include_usage: true },
